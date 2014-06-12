@@ -14,8 +14,8 @@ def main(topLayerY=1.0, bottomLayerY=0.0, startPointLeft=0.0, stopPointRight=10.
     :type stopPointRight:   float
     :param headRadius:      The radius of each phosphate head.
     :type headRadius:       float
-    :returns:               The phosphate heads, the vertices for the start and end of the lipid tails, the movements required to draw the tails.
-    :type:                  list of matplotlib.patches, list of tuples, list of mpath.Path objects
+    :returns :              The phosphate heads, the vertices for the start and end of the lipid tails, the movements required to draw the tails.
+    :type :                 list of matplotlib.patches, list of tuples, list of mpath.Path objects
     """
 
     heads = []  # The patches for the phosphate heads.
