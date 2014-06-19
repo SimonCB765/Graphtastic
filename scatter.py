@@ -1,6 +1,6 @@
 import argparse
-import pandas
 import matplotlib.pyplot as plt
+import pandas
 
 import colors
 
@@ -32,7 +32,7 @@ def main(datasetLocation, outputLocation, headerPresent=False, separator='\t', c
         plot(featureOne, featureTwo, outputLocation, title=title, xLabel=dataset.columns[columnsToPlot[0]], yLabel=dataset.columns[columnsToPlot[1]])
 
 
-def plot(featureOne, featureTwo, outputLocation, classLabels=pandas.DataFrame(), currentFigure=None, title='', xLabel='', yLabel='', size=40, shape='o', edgeColor='black',
+def plot(featureOne, featureTwo, outputLocation=None, classLabels=pandas.DataFrame(), currentFigure=None, title='', xLabel='', yLabel='', size=40, shape='o', edgeColor='black',
 		 faceColorSet='set2', linewidths=0.25, alpha=0.75, spinesToRemove=['top', 'right']):
     """
     """
@@ -73,9 +73,10 @@ def plot(featureOne, featureTwo, outputLocation, classLabels=pandas.DataFrame(),
     if classLabels.empty:
         axes.scatter(featureOne, featureTwo, s=size, c='red', marker=shape, edgecolor=edgeColor, linewidths=linewidths, alpha=alpha)
     else:
-        uniqueLabels = classLabels.unique()
-        for i in uniqueLabels:
-            axes.scatter(featureOne[classLabels == i], featureTwo[classLabels == i], s=size, c=colors.colorMaps[faceColorSet][i], label=str(i), marker=shape, edgecolor=edgeColor, linewidths=linewidths, alpha=alpha)
+        uniqueLabels = sorted(classLabels.unique())
+        numberOfColors = len(colors.colorMaps[faceColorSet])
+        for i, j in enumerate(uniqueLabels):
+            axes.scatter(featureOne[classLabels == j], featureTwo[classLabels == j], s=size, c=colors.colorMaps[faceColorSet][i % numberOfColors], label=str(i), marker=shape, edgecolor=edgeColor, linewidths=linewidths, alpha=alpha)
         # Add a legend.
         legend = axes.legend(bbox_to_anchor=(1.05, 0.5), loc=6, borderaxespad=0, frameon=True, scatterpoints=1)
         legendFrame = legend.get_frame()
@@ -85,7 +86,10 @@ def plot(featureOne, featureTwo, outputLocation, classLabels=pandas.DataFrame(),
         for i in legend.get_texts():
             i.set_color('0.25')
 
-    plt.savefig(outputLocation, bbox_inches='tight', transparent=True)
+    if outputLocation:
+        plt.savefig(outputLocation, bbox_inches='tight', transparent=True)
+    else:
+        return currentFigure, axes
 
 
 if __name__ == '__main__':
