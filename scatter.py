@@ -6,10 +6,22 @@ import colors
 
 
 def main(datasetLocation, outputLocation, headerPresent=False, separator='\t', classColumn=None, columnsToPlot=None, title=''):
-    """
+    """Create and save a scatter plot of a given dataset.
 
     :param datasetLocation:     The location of the dataset to generate a scatterplot from.
     :type datasetLocation:      str
+    :param outputLocation:      The location where the figure should be saved.
+    :type outputLocation:       str
+    :param headerPresent:       Whether a single line header is present in the dataset file.
+    :type headerPresent:        boolean
+    :param separator:           The string that separates values in the file containing dataset.
+    :type separator:            str
+    :param classColumn:         The index of the column containing the class of the observations (can use negative indexing).
+    :type classColumn:          int (or None if there is no class)
+    :param columnsToPlot:       The indices of the two columns to plot (defaults to the first and second columns [0, 1]).
+    :type columnsToPlot:        list of ints
+    :param title:               The title for the figure.
+    :type title:                str
 
     """
 
@@ -32,9 +44,43 @@ def main(datasetLocation, outputLocation, headerPresent=False, separator='\t', c
         plot(featureOne, featureTwo, outputLocation, title=title, xLabel=dataset.columns[columnsToPlot[0]], yLabel=dataset.columns[columnsToPlot[1]])
 
 
-def plot(featureOne, featureTwo, outputLocation=None, classLabels=pandas.DataFrame(), currentFigure=None, title='', xLabel='', yLabel='', size=40, shape='o', edgeColor='black',
-		 faceColorSet='set2', linewidths=0.25, alpha=0.75, spinesToRemove=['top', 'right']):
-    """
+def plot(xValues, yValues, outputLocation=None, classLabels=pandas.DataFrame(), currentFigure=None, title='', xLabel='', yLabel='', size=40,
+         shape='o', edgeColor='black', faceColorSet='set2', linewidths=0.25, alpha=0.75, spinesToRemove=['top', 'right']):
+    """Plot a scatterplot.
+
+    :param xValues:             The x values of the points to plot.
+    :type xValues:              pandas.DataFrame() column vector
+    :param yValues:             The y values of the points to plot.
+    :type yValues:              pandas.DataFrame() column vector
+    :param outputLocation:      The location where the figure will be saved.
+    :type outputLocation:       str (or None if saving is not desired)
+    :param classLabels:         The classifications of each observations. Must be ordered in the same order as xValues and yValues.
+    :type classLabels:          pandas.DataFrame() column vector of same size as xValues and yValues
+    :param currentFigure:       The figure from which the axes to plot the scatterplot on will be taken. If not provided, then a new figur will be created.
+    :type currentFigure:        matplotlib.figure.Figure
+    :param title:               The title for the plot.
+    :type title:                str
+    :param xLabel:              The label for the x axis.
+    :type xLabel:               str
+    :param yLabel:              The label for the y axis.
+    :type yLabel:               str
+    :param size:                The size of the points in the scatterplot.
+    :type size:                 int
+    :param shape:               The shape of the points in the scatterplot.
+    :type shape:                any valid shape accepted by matplotlib.pyplot.scatter
+    :param edgeColor:           The color of the line edges around the points.
+    :type edgeColor:            any color accepted by matplotlib.pyplot.scatter
+    :param faceColorSet:        The color set to use in plotting the points. Will be cycled through if there are classes (so should have at least as many colors as there are classes).
+    :type faceColorSet:         any key in the colors.colorMaps dictionary
+    :param linewidths:          The width of the line edges around the points.
+    :type linewidths:           float
+    :param alpha:               The alpha value for the points face colors.
+    :type alpha:                float between 0 and 1
+    :param spinesToRemove:      The spines that should be removed from the axes.
+    :type spinesToRemove:       list containing any of ['left', 'right', 'top', 'bottom']
+    :returns :                  The figure and axes on which the scatterplot was plotted if saving is not to be performed.
+    :type :                     objects of type matplotlib.figure.Figure, matplotlib.axes.Axes
+
     """
 
     # Get the axes the will be used for the plot.
@@ -45,16 +91,16 @@ def plot(featureOne, featureTwo, outputLocation=None, classLabels=pandas.DataFra
         currentFigure = plt.figure()
         axes = currentFigure.add_subplot(1, 1, 1)
 
-    # Remove certain spines.
+    # Remove desired spines.
     for i in spinesToRemove:
         axes.spines[i].set_visible(False)
 
-    # Slightly alter remaining spines.
+    # Change remaining spines' widths and color.
     for i in set(['left', 'right', 'top', 'bottom']) - set(spinesToRemove):
         axes.spines[i].set_linewidth(0.75)
         axes.spines[i].set_color('0.25')
 
-    # Alter ticks.
+    # Remove ticks from the axes and soften the color of the labels slightly.
     axes.xaxis.set_ticks_position('none')
     for i in axes.xaxis.get_ticklabels():
         i.set_color('0.25')
@@ -62,7 +108,7 @@ def plot(featureOne, featureTwo, outputLocation=None, classLabels=pandas.DataFra
     for i in axes.yaxis.get_ticklabels():
         i.set_color('0.25')
 
-    # Setup the title.
+    # Create the figure title.
     axes.set_title(title, fontsize=22, color='0.25')
 
     # Label the axes.
@@ -71,12 +117,14 @@ def plot(featureOne, featureTwo, outputLocation=None, classLabels=pandas.DataFra
 
     # Generate the plot.
     if classLabels.empty:
-        axes.scatter(featureOne, featureTwo, s=size, c='red', marker=shape, edgecolor=edgeColor, linewidths=linewidths, alpha=alpha)
+        # If there are no classes, then generate a basic scatterplot where all points are one color.
+        axes.scatter(xValues, yValues, s=size, c='red', marker=shape, edgecolor=edgeColor, linewidths=linewidths, alpha=alpha)
     else:
+        # If there are classes, then cycle through the desired set of colors as the classes are plotted.
         uniqueLabels = sorted(classLabels.unique())
         numberOfColors = len(colors.colorMaps[faceColorSet])
         for i, j in enumerate(uniqueLabels):
-            axes.scatter(featureOne[classLabels == j], featureTwo[classLabels == j], s=size, c=colors.colorMaps[faceColorSet][i % numberOfColors], label=str(i), marker=shape, edgecolor=edgeColor, linewidths=linewidths, alpha=alpha)
+            axes.scatter(xValues[classLabels == j], yValues[classLabels == j], s=size, c=colors.colorMaps[faceColorSet][i % numberOfColors], label=str(i), marker=shape, edgecolor=edgeColor, linewidths=linewidths, alpha=alpha)
         # Add a legend.
         legend = axes.legend(bbox_to_anchor=(1.05, 0.5), loc=6, borderaxespad=0, frameon=True, scatterpoints=1)
         legendFrame = legend.get_frame()
