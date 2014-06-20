@@ -7,16 +7,17 @@ import pandas
 
 import nearestneighbours
 
-# Import the scatterplot script.
+# Import the scatterplot script and colors.
 import os
 import sys
 parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, parent_dir)
 import scatter
 import colors
+import discretecolormesh
 
 
-def main(datasetLocation, neighbours, outputLocation, headerPresent=False, separator='\t', columnsToPlot=None, title=''):
+def main(datasetLocation, neighbours, outputLocation, headerPresent=False, separator='\t', columnsToPlot=None, title='', divisions=100):
     """
     """
 
@@ -38,29 +39,41 @@ def main(datasetLocation, neighbours, outputLocation, headerPresent=False, separ
     classes = dataset.iloc[:, -1]
     figure, axes = scatter.plot(featureOne, featureTwo, classLabels=classes, title=title, xLabel=dataset.columns[0], yLabel=dataset.columns[1], faceColorSet=colorSet)
 
-    # Get axis limits.
+    # Get axes limits.
     featureOneMin = axes.get_xlim()[0]
     featureOneMax = axes.get_xlim()[1]
     featureTwoMin = axes.get_ylim()[0]
     featureTwoMax = axes.get_ylim()[1]
 
     # Create the mesh for the decision boundary.
-    delta = 0.05
-    featureOneRange = np.arange(featureOneMin, featureOneMax + delta, delta)
-    featureTwoRange = np.arange(featureTwoMin, featureTwoMax + delta, delta)
+    featureOneDelta = (featureOneMax - featureOneMin) / divisions
+    featureTwoDelta = (featureTwoMax - featureTwoMin) / divisions
+    featureOneRange = np.arange(featureOneMin, featureOneMax + featureOneDelta, featureOneDelta)
+    featureTwoRange = np.arange(featureTwoMin, featureTwoMax + featureTwoDelta, featureTwoDelta)
     featureOneMesh, featureTwoMesh = np.meshgrid(featureOneRange, featureTwoRange)
 
     # Create the NN classifier.
     classifier = nearestneighbours.NearestNeighbours(dataset, headerPresent=headerPresent)
 
     # Classify the points on the mesh.
-    p = Pool(5)
-    h = p.map(worker, [(classifier, pandas.DataFrame([featureOneMesh[:, i], featureTwoMesh[:, i]]).T, neighbours) for i in range(len(featureOneRange))])
+    workerPool = Pool(5)
+    classificatons = workerPool.map(worker, [(classifier, pandas.DataFrame([featureOneMesh[:, i], featureTwoMesh[:, i]]).T, neighbours) for i in range(len(featureOneRange))])
 
-    # Draw the boundary and classification regions.
+    print(featureOneMesh)
+    print(featureTwoMesh)
+    print(np.transpose(np.array(classificatons)))
+
+    # Draw the boundary and classification regions. Ideally use pcolormesh, but with alpha value this gives unsightly lines along the edges of the mesh
+    # due to overlapping squares (http://matplotlib.1069221.n5.nabble.com/Quadmesh-with-alpha-without-the-nasty-edge-effects-td41039.html) that
+    # edgecolor='none' does not fix. Instead use my workaround that provides nicer boundaries and gives boundary lines.
     uniqueClasses = sorted(classes.unique())
     numberOfClasses = len(uniqueClasses)
-    m = plt.pcolormesh(featureOneMesh, featureTwoMesh, np.transpose(np.array(h)), cmap=col.ListedColormap(colors.colorMaps[colorSet][:numberOfClasses]), edgecolors='None', alpha=0.3, zorder=-1)
+    #plt.pcolormesh(featureOneMesh, featureTwoMesh, np.transpose(np.array(classificatons)), cmap=col.ListedColormap(colors.colorMaps[colorSet][:numberOfClasses]), edgecolor='none', alpha=0.3, zorder=-1)
+    discretecolormesh.main(featureOneMesh, featureTwoMesh, np.transpose(np.array(classificatons)), currentFigure=figure)
+
+    # Reset the axes to ensure that the color map plotting hasn't changed it, which would cause a bunch of whitespace around the edges of the color map.
+    axes.set_xlim([featureOneMin, featureOneMax])
+    axes.set_ylim([featureTwoMin, featureTwoMax])
 
     # Save the figure.
     plt.savefig(outputLocation, bbox_inches='tight', transparent=True)
@@ -91,7 +104,9 @@ if __name__ == '__main__':
                         type=str, default='0,1', required=False)
     parser.add_argument('-t', '--title', help='The title for the plot. (Required type: %(type)s, default value: %(default)s).',
                         type=str, default='', required=False)
+    parser.add_argument('-x', '--sectors', help='Number of sectors to divide each axis into for forming the classification areas. More sectors means smoother boundaries but longer computation times. (Required type: %(type)s, default value: %(default)s).',
+                        type=float, default=100, required=False)
     args = parser.parse_args()
 
     columnsToPlot = None if len(args.cols.split(',')) != 2 else [int(i) for i in args.cols.split(',')]
-    main(args.dataset, args.neighbours, args.output, headerPresent=args.header, separator=args.sep, columnsToPlot=columnsToPlot, title=args.title)
+    main(args.dataset, args.neighbours, args.output, headerPresent=args.header, separator=args.sep, columnsToPlot=columnsToPlot, title=args.title, divisions=args.sectors)
