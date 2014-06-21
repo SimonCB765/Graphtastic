@@ -1,5 +1,5 @@
 import argparse
-import matplotlib.colors as col
+#import matplotlib.colors as col
 import matplotlib.pyplot as plt
 from multiprocessing import Pool
 import numpy as np
@@ -33,45 +33,55 @@ def main(datasetLocation, neighbours, outputLocation, headerPresent=False, separ
     # Define the color set used.
     colorSet = 'set2'
 
-    # Extract the data to plot and plot it.
+    # Extract the data to plot.
     featureOne = dataset.iloc[:, 0]
     featureTwo = dataset.iloc[:, 1]
     classes = dataset.iloc[:, -1]
-    figure, axes = scatter.plot(featureOne, featureTwo, classLabels=classes, title=title, xLabel=dataset.columns[0], yLabel=dataset.columns[1], faceColorSet=colorSet)
 
     # Get axes limits.
-    featureOneMin = axes.get_xlim()[0]
-    featureOneMax = axes.get_xlim()[1]
-    featureTwoMin = axes.get_ylim()[0]
-    featureTwoMax = axes.get_ylim()[1]
+    featureOneMin = featureOne.nsmallest(1).iloc[0]
+    featureOneMax = featureOne.nlargest(1).iloc[0]
+    featureOneRange = (featureOneMax - featureOneMin)
+    featureOneMin -= featureOneRange * 0.1
+    featureOneMax += featureOneRange * 0.1
+    featureTwoMin = featureTwo.nsmallest(1).iloc[0]
+    featureTwoMax = featureTwo.nlargest(1).iloc[0]
+    featureTwoRange = (featureTwoMax - featureTwoMin)
+    featureTwoMin -= featureTwoRange * 0.1
+    featureTwoMax += featureTwoRange * 0.1
 
     # Create the mesh for the decision boundary.
     featureOneDelta = (featureOneMax - featureOneMin) / divisions
     featureTwoDelta = (featureTwoMax - featureTwoMin) / divisions
-    featureOneRange = np.arange(featureOneMin, featureOneMax + featureOneDelta, featureOneDelta)
-    featureTwoRange = np.arange(featureTwoMin, featureTwoMax + featureTwoDelta, featureTwoDelta)
-    featureOneMesh, featureTwoMesh = np.meshgrid(featureOneRange, featureTwoRange)
+    featureOneSteps = np.arange(featureOneMin, featureOneMax + featureOneDelta, featureOneDelta)
+    featureTwoSteps = np.arange(featureTwoMin, featureTwoMax + featureTwoDelta, featureTwoDelta)
+    featureOneMesh, featureTwoMesh = np.meshgrid(featureOneSteps, featureTwoSteps)
 
     # Create the NN classifier.
     classifier = nearestneighbours.NearestNeighbours(dataset, headerPresent=headerPresent)
 
     # Classify the points on the mesh.
     workerPool = Pool(5)
-    classificatons = workerPool.map(worker, [(classifier, pandas.DataFrame([featureOneMesh[:, i], featureTwoMesh[:, i]]).T, neighbours) for i in range(len(featureOneRange))])
-
-    print(featureOneMesh)
-    print(featureTwoMesh)
-    print(np.transpose(np.array(classificatons)))
+    classificatons = workerPool.map(worker, [(classifier, pandas.DataFrame([featureOneMesh[:, i], featureTwoMesh[:, i]]).T, neighbours) for i in range(len(featureOneSteps))])
 
     # Draw the boundary and classification regions. Ideally use pcolormesh, but with alpha value this gives unsightly lines along the edges of the mesh
     # due to overlapping squares (http://matplotlib.1069221.n5.nabble.com/Quadmesh-with-alpha-without-the-nasty-edge-effects-td41039.html) that
     # edgecolor='none' does not fix. Instead use my workaround that provides nicer boundaries and gives boundary lines.
     uniqueClasses = sorted(classes.unique())
-    numberOfClasses = len(uniqueClasses)
-    #plt.pcolormesh(featureOneMesh, featureTwoMesh, np.transpose(np.array(classificatons)), cmap=col.ListedColormap(colors.colorMaps[colorSet][:numberOfClasses]), edgecolor='none', alpha=0.3, zorder=-1)
-    discretecolormesh.main(featureOneMesh, featureTwoMesh, np.transpose(np.array(classificatons)), currentFigure=figure)
+#    numberOfClasses = len(uniqueClasses)
+#    plt.pcolormesh(featureOneMesh, featureTwoMesh, np.transpose(np.array(classificatons)), cmap=col.ListedColormap(colors.colorMaps[colorSet][:numberOfClasses]), edgecolor='none', alpha=0.3, zorder=-1)
+    colorsToUse = colors.colorMaps[colorSet]
+    numberOfColors = len(colorsToUse)
+    classToColorMapping = {}
+    for i, j in enumerate(uniqueClasses):
+        classToColorMapping[j] = colorsToUse[i % numberOfColors]
+    figure, axes = discretecolormesh.main(featureOneMesh, featureTwoMesh, np.transpose(np.array(classificatons)), border=True, classToColorMapping=classToColorMapping, fillAlpha=0.3, boundaryWidth=1)
+
+    # Plot the data.
+    figure, axes = scatter.plot(featureOne, featureTwo, classLabels=classes, currentFigure=figure, title=title, xLabel=dataset.columns[0], yLabel=dataset.columns[1], faceColorSet=colorSet, alpha=1.0)
 
     # Reset the axes to ensure that the color map plotting hasn't changed it, which would cause a bunch of whitespace around the edges of the color map.
+    plt.axis('scaled')
     axes.set_xlim([featureOneMin, featureOneMax])
     axes.set_ylim([featureTwoMin, featureTwoMax])
 
