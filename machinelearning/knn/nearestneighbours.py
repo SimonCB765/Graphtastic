@@ -3,10 +3,11 @@ import pandas
 
 import metrics
 
+
 class NearestNeighbours:
     """A nearest neighbours classifier.
 
-    Assumes that the class in the datasets used for classification are in the last column.
+    Classes of observations are always assumed to be in the final column of the dataset.
 
     """
 
@@ -21,6 +22,16 @@ class NearestNeighbours:
 
     def add_and_classify_data(self, dataset, k=3, metric='Euclidean'):
         """Classify a dataset using the stored dataset, and then add the new dataset to the stored one.
+
+        :param dataset:     The dataset of observations to classify. Assumes that features are the columns and observations the rows.
+        :type dataset:      An object that can be converted into a pandas.DataFrame.
+        :param k:           The number of neighbours to use in the classification.
+        :type k:            int
+        :param metric:      The distance metric to use.
+        :type metric:       string
+        :returns :          The classification of each observation. The classification are in the same order as the observations in the dataset to classify.
+        :type :             list
+
         """
 
         classifications = self.classify_data(dataset, metric, k)
@@ -34,7 +45,7 @@ class NearestNeighbours:
         :type dataset:              An object that can be converted into a pandas.DataFrame. If you want to add a single observation that is not in the
                                     format of a pandas.DataFrame, then it needs to able to be turned into a row (rather than a column) when
                                     pandas.DataFrame(dataset) is called (e.g. [1, 2, 3] becomes a column vector but [[1, 2, 3]] becomes a row vector).
-        :param classifications:     The classes of the added datapoints (if they are not already present in the dataset).
+        :param classifications:     The classes of the added datapoints (if they are not already present in the input dataset).
         :type classifications:      If None, then classifications must be provided as the last column of dataset. Otherwise, it contains an object that
                                     will be converted to a column vector when pandas.DataFrame(classifications) is called.
 
@@ -52,17 +63,23 @@ class NearestNeighbours:
     def classify_data(self, dataset, k=3, metric='Euclidean'):
         """Classify a dataset using the stored dataset.
 
-        :param dataset:     The dataset of observations to classify.
+        :param dataset:     The dataset of observations to classify. Assumes that features are the columns and observations the rows.
         :type dataset:      An object that can be converted into a pandas.DataFrame.
+        :param k:           The number of neighbours to use in the classification.
+        :type k:            int
+        :param metric:      The distance metric to use.
+        :type metric:       string
+        :returns :          The classification of each observation. The classification are in the same order as the observations in the dataset to classify.
+        :type :             list
 
         """
 
         dataset = pandas.DataFrame(dataset)
         distanceMetric = metrics.metrics[metric]
         classifications = []
-        classes = self.dataset.iloc[:, -1]
+        classes = self.dataset.iloc[:, -1]  # Extract the class of each stored observation.
         for index, series in dataset.iterrows():
-            distances = self.dataset.apply(lambda x : distanceMetric(x[:-1], series), axis=1)
-            classification = classes.loc[distances.nsmallest(k).index].value_counts().index[0]
+            distances = self.dataset.apply(lambda x : distanceMetric(x[:-1], series), axis=1)  # Determine each input observation's distance from all stored observations.
+            classification = classes.loc[distances.nsmallest(k).index].value_counts().index[0]  # Ties in the number of nearest neighbours are broken arbitrarily.
             classifications.append(classification)
         return classifications
