@@ -83,3 +83,32 @@ class NearestNeighbours:
             classification = classes.loc[distances.nsmallest(k).index].value_counts().index[0]  # Ties in the number of nearest neighbours are broken arbitrarily.
             classifications.append(classification)
         return classifications
+
+    def get_neighbours(self, observation, k=None, metric='Euclidean'):
+        """Get the distance from a given observation to a set of the observations in the stored dataset.
+
+        :param observation:     The observation for which all distances to stored observations will be calculated.
+        :type observation:      1 dimensional array like object with features ordered the same as self.dataset
+        :param k:               The number of neighbours to return distances for. If None, then return distances for all observations in the stored dataset.
+        :type k:                int or None
+        :param metric:          The distance metric to use.
+        :type metric:           string
+        :return :               The desired number of stored observations, along with their distance to the input observations.
+        :type :                 pandas.DataFrame
+
+        """
+
+        distanceMetric = metrics.metrics[metric]
+        distances = self.dataset.apply(lambda x : distanceMetric(x[:-1], observation), axis=1)  # Determine each stored observation's distance from the input observation.
+        distances = pandas.Series(distances)
+        if k:
+            distanceToNearest = distances.nsmallest(k)
+            nearestNeighours = self.dataset.loc[distanceToNearest.index]
+            returnValue = pandas.concat([nearestNeighours, distanceToNearest], axis=1)
+        else:
+            returnValue =  pandas.concat([self.dataset, distances], axis=1)
+        # Change columns in a depressingly involved manner.
+        newColumns = returnValue.columns.values
+        newColumns[-1] = 'Distance'
+        returnValue.columns  = newColumns
+        return returnValue
