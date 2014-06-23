@@ -6,7 +6,7 @@ import colors
 
 
 def main(datasetLocation, outputLocation, headerPresent=False, separator='\t', classColumn=None, columnsToPlot=None, title=''):
-    """Create and save a scatter plot of a given dataset.
+    """Create a scatter plot of a given dataset.
 
     :param datasetLocation:     The location of the dataset to generate a scatterplot from.
     :type datasetLocation:      str
