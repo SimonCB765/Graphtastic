@@ -1,5 +1,4 @@
 import argparse
-#import matplotlib.colors as col
 import matplotlib.pyplot as plt
 from multiprocessing import Pool
 import numpy as np
@@ -7,18 +6,38 @@ import pandas
 
 import nearestneighbours
 
-# Import the scatterplot script and colors.
+# Import the scatterplot script, colors and the script for generating the color fill.
 import os
 import sys
 parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, parent_dir)
-import scatter
 import colors
 import discretecolormesh
+import scatter
 
 
-def main(datasetLocation, neighbours, outputLocation, headerPresent=False, separator='\t', columnsToPlot=None, title='', divisions=100):
-    """
+def main(datasetLocation, neighbours, outputLocation, headerPresent=False, separator='\t', classColumn=-1, columnsToPlot=None, title='', divisions=100):
+    """Create a scatter plot along with the NN decision boundaries induced by the data.
+
+    :param datasetLocation:     The location of the dataset to generate the plot from.
+    :type datasetLocation:      str
+    :param neighbours:          The number of neighbours to use in the classification.
+    :type neighbours:           int
+    :param outputLocation:      The location where the figure should be saved.
+    :type outputLocation:       str
+    :param headerPresent:       Whether a single line header is present in the dataset file.
+    :type headerPresent:        boolean
+    :param separator:           The string that separates values in the file containing dataset.
+    :type separator:            str
+    :param classColumn:         The index of the column containing the class of the observations (can use negative indexing).
+    :type classColumn:          int
+    :param columnsToPlot:       The indices of the two columns to plot (defaults to the first and second columns [0, 1]).
+    :type columnsToPlot:        list of ints
+    :param title:               The title for the figure.
+    :type title:                str
+    :param divisions:           The number of slices to divide each axis into. Each of the divisions^2 (x,y) pairs will be evaluated for its class.
+    :type divisions:            int
+
     """
 
     # Setup the columns to plot.
@@ -34,8 +53,8 @@ def main(datasetLocation, neighbours, outputLocation, headerPresent=False, separ
     colorSet = 'set2'
 
     # Extract the data to plot.
-    featureOne = dataset.iloc[:, 0]
-    featureTwo = dataset.iloc[:, 1]
+    featureOne = dataset.iloc[:, columnsToPlot[0]]
+    featureTwo = dataset.iloc[:, columnsToPlot[1]]
     classes = dataset.iloc[:, -1]
 
     # Get axes limits.
@@ -50,7 +69,7 @@ def main(datasetLocation, neighbours, outputLocation, headerPresent=False, separ
     featureTwoMin -= featureTwoRange * 0.1
     featureTwoMax += featureTwoRange * 0.1
 
-    # Create the mesh for the decision boundary.
+    # Create the (x,y) pair mesh for the decision boundary and color filling.
     featureOneDelta = (featureOneMax - featureOneMin) / divisions
     featureTwoDelta = (featureTwoMax - featureTwoMin) / divisions
     featureOneSteps = np.arange(featureOneMin, featureOneMax + featureOneDelta, featureOneDelta)
@@ -64,12 +83,10 @@ def main(datasetLocation, neighbours, outputLocation, headerPresent=False, separ
     workerPool = Pool(5)
     classificatons = workerPool.map(worker, [(classifier, pandas.DataFrame([featureOneMesh[:, i], featureTwoMesh[:, i]]).T, neighbours) for i in range(len(featureOneSteps))])
 
-    # Draw the boundary and classification regions. Ideally use pcolormesh, but with alpha value this gives unsightly lines along the edges of the mesh
-    # due to overlapping squares (http://matplotlib.1069221.n5.nabble.com/Quadmesh-with-alpha-without-the-nasty-edge-effects-td41039.html) that
-    # edgecolor='none' does not fix. Instead use my workaround that provides nicer boundaries and gives boundary lines.
+    # Draw the boundary and classification regions. Ideally pcolormesh would be used, but with alpha values this gives unsightly lines along the edges of the
+    # mesh due to overlapping squares (http://matplotlib.1069221.n5.nabble.com/Quadmesh-with-alpha-without-the-nasty-edge-effects-td41039.html) that
+    # edgecolor='none' does not fix. Instead use my workaround that plays nice with alpha values and gives boundary lines.
     uniqueClasses = sorted(classes.unique())
-#    numberOfClasses = len(uniqueClasses)
-#    plt.pcolormesh(featureOneMesh, featureTwoMesh, np.transpose(np.array(classificatons)), cmap=col.ListedColormap(colors.colorMaps[colorSet][:numberOfClasses]), edgecolor='none', alpha=0.3, zorder=-1)
     colorsToUse = colors.colorMaps[colorSet]
     numberOfColors = len(colorsToUse)
     classToColorMapping = {}
@@ -80,7 +97,7 @@ def main(datasetLocation, neighbours, outputLocation, headerPresent=False, separ
     # Plot the data.
     figure, axes = scatter.plot(featureOne, featureTwo, classLabels=classes, currentFigure=figure, title=title, xLabel=dataset.columns[0], yLabel=dataset.columns[1], faceColorSet=colorSet, alpha=1.0)
 
-    # Reset the axes to ensure that the color map plotting hasn't changed it, which would cause a bunch of whitespace around the edges of the color map.
+    # Reset the axes to ensure that the color mesh plotting hasn't changed it, which would cause a bunch of whitespace around the edges of the plot.
     plt.axis('scaled')
     axes.set_xlim([featureOneMin, featureOneMax])
     axes.set_ylim([featureTwoMin, featureTwoMax])
@@ -90,10 +107,17 @@ def main(datasetLocation, neighbours, outputLocation, headerPresent=False, separ
 
 
 def worker(parameters):
+    """Classify the dataset using the supplied classifier and number of neighbours.
+
+    Auxiliary function is required to meet restrictions placed on Pool.map.
+
+    :param parameters:      The classifier, dataset and number of nearest neighbours to use in the classification.
+    :type parameters:       list of a nearestneighbours.NearestNeighbours object, pandas.DataFrame object and an int
+    :returns :              The classes of the observations in the input dataset
+    :type :                 list
+
     """
-    So complicated to get around restrictions on Pool.map
-    """
-    
+
     classifier = parameters[0]
     data = parameters[1]
     k = parameters[2]
@@ -110,6 +134,8 @@ if __name__ == '__main__':
                         action='store_true', default=False, required=False)
     parser.add_argument('-s', '--sep', help='The separator used by the dataset file. (Required type: %(type)s, default value: %(default)s).',
                         type=str, default='\t', required=False)
+    parser.add_argument('-d', '--classCol', help='The index of the column in which the values of the class variable can be found. (Required type: %(type)s, default value: %(default)s).',
+                        type=int, default=-1, required=False)
     parser.add_argument('-c', '--cols', help='The indices of the columns that should be plotted against each other. (Required type: two ints separated by a comma, default value: first two columns).',
                         type=str, default='0,1', required=False)
     parser.add_argument('-t', '--title', help='The title for the plot. (Required type: %(type)s, default value: %(default)s).',
@@ -119,4 +145,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     columnsToPlot = None if len(args.cols.split(',')) != 2 else [int(i) for i in args.cols.split(',')]
-    main(args.dataset, args.neighbours, args.output, headerPresent=args.header, separator=args.sep, columnsToPlot=columnsToPlot, title=args.title, divisions=args.sectors)
+    main(args.dataset, args.neighbours, args.output, headerPresent=args.header, separator=args.sep, classColumn=args.classCol, columnsToPlot=columnsToPlot, title=args.title, divisions=args.sectors)
