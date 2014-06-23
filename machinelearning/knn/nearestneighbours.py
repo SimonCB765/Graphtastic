@@ -84,7 +84,7 @@ class NearestNeighbours:
             classifications.append(classification)
         return classifications
 
-    def get_neighbours(self, observation, k=None, metric='Euclidean'):
+    def get_neighbour_distances(self, observation, k=None, metric='Euclidean'):
         """Get the distance from a given observation to a set of the observations in the stored dataset.
 
         :param observation:     The observation for which all distances to stored observations will be calculated.
