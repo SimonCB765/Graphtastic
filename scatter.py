@@ -56,7 +56,7 @@ def plot(xValues, yValues, outputLocation=None, classLabels=pandas.DataFrame(), 
     :type outputLocation:       str (or None if saving is not desired)
     :param classLabels:         The classifications of each observations. Must be ordered in the same order as xValues and yValues.
     :type classLabels:          pandas.DataFrame() column vector of same size as xValues and yValues
-    :param currentFigure:       The figure from which the axes to plot the scatterplot on will be taken. If not provided, then a new figur will be created.
+    :param currentFigure:       The figure from which the axes to plot the scatterplot on will be taken. If not provided, then a new figure will be created.
     :type currentFigure:        matplotlib.figure.Figure
     :param title:               The title for the plot.
     :type title:                str
