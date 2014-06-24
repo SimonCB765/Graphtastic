@@ -44,8 +44,8 @@ def main(datasetLocation, outputLocation, headerPresent=False, separator='\t', c
         plot(featureOne, featureTwo, outputLocation, title=title, xLabel=dataset.columns[columnsToPlot[0]], yLabel=dataset.columns[columnsToPlot[1]])
 
 
-def plot(xValues, yValues, outputLocation=None, classLabels=pandas.DataFrame(), currentFigure=None, title='', xLabel='', yLabel='', size=40,
-         shape='o', edgeColor='black', faceColorSet='set2', linewidths=0.25, alpha=0.75, spinesToRemove=['top', 'right']):
+def plot(xValues, yValues, outputLocation=None, classLabels=pandas.Series(), currentFigure=None, title='', xLabel='', yLabel='', size=40,
+         shape='o', edgeColor='black', faceColorSet='set2', linewidths=0.25, alpha=0.75, spinesToRemove=['top', 'right'], legend=True):
     """Plot a scatterplot.
 
     :param xValues:             The x values of the points to plot.
@@ -55,7 +55,8 @@ def plot(xValues, yValues, outputLocation=None, classLabels=pandas.DataFrame(), 
     :param outputLocation:      The location where the figure will be saved.
     :type outputLocation:       str (or None if saving is not desired)
     :param classLabels:         The classifications of each observations. Must be ordered in the same order as xValues and yValues.
-    :type classLabels:          pandas.DataFrame() column vector of same size as xValues and yValues
+                                An empty Series indicates no class infrmation should be use.
+    :type classLabels:          a pandas object of the same size as xValues and yValues on which unique and empty can be called.
     :param currentFigure:       The figure from which the axes to plot the scatterplot on will be taken. If not provided, then a new figure will be created.
     :type currentFigure:        matplotlib.figure.Figure
     :param title:               The title for the plot.
@@ -78,6 +79,8 @@ def plot(xValues, yValues, outputLocation=None, classLabels=pandas.DataFrame(), 
     :type alpha:                float between 0 and 1
     :param spinesToRemove:      The spines that should be removed from the axes.
     :type spinesToRemove:       list containing any of ['left', 'right', 'top', 'bottom']
+    :param legend:              Whether a legend should be added.
+    :type legend:               boolean
     :returns :                  The figure and axes on which the scatterplot was plotted if saving is not to be performed.
     :type :                     objects of type matplotlib.figure.Figure, matplotlib.axes.Axes
 
@@ -126,13 +129,14 @@ def plot(xValues, yValues, outputLocation=None, classLabels=pandas.DataFrame(), 
         for i, j in enumerate(uniqueLabels):
             axes.scatter(xValues[classLabels == j], yValues[classLabels == j], s=size, c=colors.colorMaps[faceColorSet][i % numberOfColors], label=str(i), marker=shape, edgecolor=edgeColor, linewidths=linewidths, alpha=alpha)
         # Add a legend.
-        legend = axes.legend(bbox_to_anchor=(1.05, 0.5), loc=6, borderaxespad=0, frameon=True, scatterpoints=1)
-        legendFrame = legend.get_frame()
-        legendFrame.set_facecolor('white')
-        legendFrame.set_edgecolor('black')
-        legendFrame.set_linewidth(0.2)
-        for i in legend.get_texts():
-            i.set_color('0.25')
+        if legend:
+            legend = axes.legend(bbox_to_anchor=(1.05, 0.5), loc=6, borderaxespad=0, frameon=True, scatterpoints=1)
+            legendFrame = legend.get_frame()
+            legendFrame.set_facecolor('white')
+            legendFrame.set_edgecolor('black')
+            legendFrame.set_linewidth(0.2)
+            for i in legend.get_texts():
+                i.set_color('0.25')
 
     if outputLocation:
         plt.savefig(outputLocation, bbox_inches='tight', transparent=True)
