@@ -1,7 +1,7 @@
 import argparse
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-from matplotlib.widgets import RadioButtons
+from matplotlib.widgets import RadioButtons, Button
 from multiprocessing import Pool
 import numpy as np
 import pandas
@@ -15,7 +15,7 @@ import sys
 parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, parent_dir)
 import colors
-import discretecolormesh
+import discreteheatmap
 import scatter
 
 
@@ -89,7 +89,6 @@ class InteractiveNNDemo:
 
 
     def on_click(self, event):
-        print('button={0}, x={1}, y={2}, xdata={3}, ydata={4}, inaxes={5}'.format(event.button, event.x, event.y, event.xdata, event.ydata, event.inaxes))
         if event.inaxes == self.axes:
             # Only do something if the click occurred within the axes containing the plot.
             coords = (event.xdata, event.ydata)
@@ -99,7 +98,6 @@ class InteractiveNNDemo:
                 for i in self.plottedPoints:
                     if scipy.spatial.distance.euclidean(i, coords) < self.pointRadius:
                         # Click was inside a point.
-                        print('\tClicked in circle centered at {0}'.format(i))
                         deletionFound = True
                         break
                 if deletionFound:
@@ -119,6 +117,18 @@ class InteractiveNNDemo:
             self.currentlyDeleting = False
         else:
             self.currentlyDeleting = True
+
+
+    def on_recompute(self, event):
+        print('Recompute')
+
+
+    def on_reset(self, event):
+        print('Reset')
+
+
+    def save(self, outputLocation):
+        self.currentFigure.savefig(outputLocation, bbox_inches='tight', transparent=True)
 
 
     def start(self):
@@ -156,10 +166,11 @@ class InteractiveNNDemo:
         # Draw the boundary and classification regions. Ideally pcolormesh would be used, but with alpha values this gives unsightly lines along the edges of the
         # mesh due to overlapping squares (http://matplotlib.1069221.n5.nabble.com/Quadmesh-with-alpha-without-the-nasty-edge-effects-td41039.html) that
         # edgecolor='none' does not fix. Instead use my workaround that plays nice with alpha values and gives boundary lines.
-        self.currentFigure, self.axes = discretecolormesh.main(featureOneMesh, featureTwoMesh, np.transpose(np.array(classificatons)),
-                                                               currentFigure=self.currentFigure, border=True, classToColorMapping=self.classToColorMapping,
-                                                               fillAlpha=0.3, boundaryWidth=1, title=self.title, xLabel=self.originalDataset.columns[0],
-                                                               yLabel=self.originalDataset.columns[1])
+        self.currentFigure, self.axes = discreteheatmap.main(featureOneMesh, featureTwoMesh, np.transpose(np.array(classificatons)),
+                                                             currentFigure=self.currentFigure, boundary=True, boundaryColor='black', boundaryWidth=2,
+                                                             fill=1, fillAlpha=0.75, dotSize=200/self.divisions, colorMapping=self.classToColorMapping,
+                                                             title=self.title, xLabel=self.originalDataset.columns[0],
+                                                             yLabel=self.originalDataset.columns[1], legend=False)
 
         # Plot the data.
         for index, series in self.originalDataset.iterrows():
@@ -187,16 +198,30 @@ class InteractiveNNDemo:
 
         # Reset the axes to ensure that the color mesh plotting hasn't changed it, which would cause a bunch of whitespace around the edges of the plot.
         plt.axis('scaled')
-        self.axes.set_xlim([featureOneMin, featureOneMax])
-        self.axes.set_ylim([featureTwoMin, featureTwoMax])
+        axisOnePadding = featureOneRange * 0.05
+        self.axes.set_xlim([featureOneMin - axisOnePadding, featureOneMax + axisOnePadding])
+        axisTwoPadding = featureTwoRange * 0.05
+        self.axes.set_ylim([featureTwoMin - axisTwoPadding, featureTwoMax + axisTwoPadding])
+
+        # Create the recompute boundaries button.
+        recomputeAxesLoc = plt.axes([0.05, 0.54, 0.07, 0.075], axisbg='white')
+        recomputeButton = Button(recomputeAxesLoc, 'Recompute')
+        recomputeButton.on_clicked(self.on_recompute)
+
+        # Create the reset button.
+        resetAxesLoc = plt.axes([0.05, 0.44, 0.07, 0.075], axisbg='white')
+        resetButton = Button(resetAxesLoc, 'Reset')
+        resetButton.on_clicked(self.on_reset)
 
         # Create the add/delete radio button.
-        addDeleteAxesLoc = plt.axes([0.0, 0.85, 0.07, 0.1], axisbg='0.75')
+        addDeleteAxesLoc = plt.axes([0.05, 0.85, 0.07, 0.1], axisbg='0.85')
+        addDeleteAxesLoc.set_title('Add/Delete Points')
         addDeleteRadio = RadioButtons(addDeleteAxesLoc, active=1, activecolor='black', labels=['Add', 'Delete'])
         addDeleteRadio.on_clicked(self.on_delete_change)
 
         # Create the class radio button.
-        classAxesLoc = plt.axes([0.0, 0.05, 0.07, 0.025 * len(self.classToColorMapping)], axisbg='0.75')
+        classAxesLoc = plt.axes([0.05, 0.05, 0.07, 0.025 * len(self.classToColorMapping)], axisbg='0.85')
+        classAxesLoc.set_title('Class Options')
         classRadio = RadioButtons(classAxesLoc, active=0, activecolor='black', labels=[i for i in sorted(self.classToColorMapping)])
         classRadio.on_clicked(self.on_class_change)
 
@@ -250,8 +275,12 @@ if __name__ == '__main__':
                         type=int, default=100, required=False)
     parser.add_argument('-r', '--radius', help='The radius of the plotted points. (Required type: %(type)s, default value: %(default)s).',
                         type=float, default=0.025, required=False)
+    parser.add_argument('-o', '--output', help='The location to save the final modified image. (Required type: %(type)s, default value: %(default)s).',
+                        type=str, default=None, required=False)
     args = parser.parse_args()
 
     columnsToPlot = None if len(args.cols.split(',')) != 2 else [int(i) for i in args.cols.split(',')]
-    demo = InteractiveNNDemo(args.dataset, args.neighbours, headerPresent=args.header, separator=args.sep, classColumn=args.classCol, columnsToPlot=columnsToPlot, title=args.title, divisions=args.sectors)
+    demo = InteractiveNNDemo(args.dataset, args.neighbours, headerPresent=args.header, separator=args.sep, classColumn=args.classCol, columnsToPlot=columnsToPlot, title=args.title, divisions=args.sectors, radius=args.radius)
     demo.start()
+    if args.output:
+        demo.save(args.output)
