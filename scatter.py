@@ -127,7 +127,7 @@ def plot(xValues, yValues, outputLocation=None, classLabels=pandas.Series(), cur
         uniqueLabels = sorted(classLabels.unique())
         numberOfColors = len(colors.colorMaps[faceColorSet])
         for i, j in enumerate(uniqueLabels):
-            axes.scatter(xValues[classLabels == j], yValues[classLabels == j], s=size, c=colors.colorMaps[faceColorSet][i % numberOfColors], label=str(i), marker=shape, edgecolor=edgeColor, linewidths=linewidths, alpha=alpha)
+            axes.scatter(xValues[classLabels == j], yValues[classLabels == j], s=size, c=colors.colorMaps[faceColorSet][i % numberOfColors], label=str(j), marker=shape, edgecolor=edgeColor, linewidths=linewidths, alpha=alpha)
         # Add a legend.
         if legend:
             legend = axes.legend(bbox_to_anchor=(1.05, 0.5), loc=6, borderaxespad=0, frameon=True, scatterpoints=1)
