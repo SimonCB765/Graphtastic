@@ -168,7 +168,7 @@ class InteractiveNNDemo:
         # edgecolor='none' does not fix. Instead use my workaround that plays nice with alpha values and gives boundary lines.
         self.currentFigure, self.axes = discreteheatmap.main(featureOneMesh, featureTwoMesh, np.transpose(np.array(classificatons)),
                                                              currentFigure=self.currentFigure, boundary=True, boundaryColor='black', boundaryWidth=2,
-                                                             fill=1, fillAlpha=0.75, dotSize=200/self.divisions, colorMapping=self.classToColorMapping,
+                                                             fill=2, fillAlpha=0.75, dotSize=200/self.divisions, colorMapping=self.classToColorMapping,
                                                              title=self.title, xLabel=self.originalDataset.columns[0],
                                                              yLabel=self.originalDataset.columns[1], legend=False)
 
@@ -199,9 +199,9 @@ class InteractiveNNDemo:
         # Reset the axes to ensure that the color mesh plotting hasn't changed it, which would cause a bunch of whitespace around the edges of the plot.
         plt.axis('scaled')
         axisOnePadding = featureOneRange * 0.05
-        self.axes.set_xlim([featureOneMin - axisOnePadding, featureOneMax + axisOnePadding])
+        self.axes.set_xlim([featureOneMesh.min() - axisOnePadding, featureOneMesh.max() + axisOnePadding])
         axisTwoPadding = featureTwoRange * 0.05
-        self.axes.set_ylim([featureTwoMin - axisTwoPadding, featureTwoMax + axisTwoPadding])
+        self.axes.set_ylim([featureTwoMesh.min() - axisTwoPadding, featureTwoMesh.max() + axisTwoPadding])
 
         # Create the recompute boundaries button.
         recomputeAxesLoc = plt.axes([0.05, 0.54, 0.07, 0.075], axisbg='white')
