@@ -130,7 +130,7 @@ def plot(xValues, yValues, outputLocation=None, classLabels=pandas.Series(), cur
         # Map the class values to colors. If there are more class values than colors, then multiple lass values will be mapped to the same color.
         uniqueLabels = sorted(classLabels.unique())
         if not colorMapping:
-            colorsToUse = colors.colorMaps[colorSet]
+            colorsToUse = colors.colorMaps[faceColorSet]
             numberOfColors = len(colorsToUse)
             colorMapping = {}
             for i, j in enumerate(uniqueLabels):
