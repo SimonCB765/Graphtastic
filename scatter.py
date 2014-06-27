@@ -45,7 +45,7 @@ def main(datasetLocation, outputLocation, headerPresent=False, separator='\t', c
 
 
 def plot(xValues, yValues, outputLocation=None, classLabels=pandas.Series(), currentFigure=None, title='', xLabel='', yLabel='', size=40,
-         shape='o', edgeColor='black', faceColorSet='set2', linewidths=0.25, alpha=0.75, spinesToRemove=['top', 'right'], legend=True):
+         shape='o', edgeColor='black', faceColorSet='set2', colorMapping=None, linewidths=0.25, alpha=0.75, spinesToRemove=['top', 'right'], legend=True):
     """Plot a scatterplot.
 
     :param xValues:             The x values of the points to plot.
@@ -71,8 +71,12 @@ def plot(xValues, yValues, outputLocation=None, classLabels=pandas.Series(), cur
     :type shape:                any valid shape accepted by matplotlib.pyplot.scatter
     :param edgeColor:           The color of the line edges around the points.
     :type edgeColor:            any color accepted by matplotlib.pyplot.scatter
-    :param faceColorSet:        The color set to use in plotting the points. Will be cycled through if there are classes (so should have at least as many colors as there are classes).
+    :param faceColorSet:        The color set to use in plotting the points. If colorMapping is provided this parameter is ignored. Otherwise, the
+                                color set will be cycled through to assign colors to class values (so should have at least as many colors as there
+                                are distinct values).
     :type faceColorSet:         any key in the colors.colorMaps dictionary
+    :param colorMapping:        A mapping from class values to their RGB color value.
+    :type colorMapping:         dict
     :param linewidths:          The width of the line edges around the points.
     :type linewidths:           float
     :param alpha:               The alpha value for the points face colors.
@@ -123,11 +127,17 @@ def plot(xValues, yValues, outputLocation=None, classLabels=pandas.Series(), cur
         # If there are no classes, then generate a basic scatterplot where all points are one color.
         axes.scatter(xValues, yValues, s=size, c='red', marker=shape, edgecolor=edgeColor, linewidths=linewidths, alpha=alpha)
     else:
-        # If there are classes, then cycle through the desired set of colors as the classes are plotted.
+        # Map the class values to colors. If there are more class values than colors, then multiple lass values will be mapped to the same color.
         uniqueLabels = sorted(classLabels.unique())
-        numberOfColors = len(colors.colorMaps[faceColorSet])
+        if not colorMapping:
+            colorsToUse = colors.colorMaps[colorSet]
+            numberOfColors = len(colorsToUse)
+            colorMapping = {}
+            for i, j in enumerate(uniqueLabels):
+                colorMapping[j] = colorsToUse[i % numberOfColors]
+
         for i, j in enumerate(uniqueLabels):
-            axes.scatter(xValues[classLabels == j], yValues[classLabels == j], s=size, c=colors.colorMaps[faceColorSet][i % numberOfColors], label=str(j), marker=shape, edgecolor=edgeColor, linewidths=linewidths, alpha=alpha)
+            axes.scatter(xValues[classLabels == j], yValues[classLabels == j], s=size, c=colorMapping[j], label=str(j), marker=shape, edgecolor=edgeColor, linewidths=linewidths, alpha=alpha)
         # Add a legend.
         if legend:
             legend = axes.legend(bbox_to_anchor=(1.05, 0.5), loc=6, borderaxespad=0, frameon=True, scatterpoints=1)
