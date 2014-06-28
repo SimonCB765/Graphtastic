@@ -15,6 +15,8 @@ def main(xCoords, yCoords, zValues, outputLocation=None, currentFigure=None, lev
     The X and Y coordinate values should be supplied such that the smallest coordinates are at index [0, 0] and the largest at [-1, -1] (as would be
     returned by calling np.arange followed by np.meshgrid).
 
+    Solid filling (fill==2) can be temperamental when the resolution of the (X,Y) grid gets very small (e.g. 10x10).
+
     :param xCoords:                 The x coordinates where the class values have been evaluated.
     :type xCoords:                  2 dimensional numpy array
     :param yCoords:                 The y coordinates where the class values have been evaluated.
@@ -92,6 +94,14 @@ def main(xCoords, yCoords, zValues, outputLocation=None, currentFigure=None, lev
     plt.xlabel(xLabel, fontsize=16, color='0.25')
     plt.ylabel(yLabel, fontsize=16, color='0.25')
 
+    # Discretise the Z values based on the desired levels.
+    if levels:
+        minZValue = zValues.min()
+        maxZValue = zValues.max()
+        extendedLevels = [minZValue - 1] + levels + [maxZValue + 1]  # Extend the levels with the extra start and stop points.
+        enumeratedLevels = [(i,j) for i,j in enumerate(zip(extendedLevels[:-1], extendedLevels[1:]))]
+        zValues = sum([(j[0] < zValues) * (zValues <= j[1]) * (i + 1) for i,j in enumeratedLevels])
+
     # Map the Z values to colors. If there are more distinct Z values than colors, then multiple Z values will be mapped to the same color.
     uniqueZValues = sorted(np.unique(zValues))
     if not colorMapping:
@@ -101,18 +111,14 @@ def main(xCoords, yCoords, zValues, outputLocation=None, currentFigure=None, lev
         for i, j in enumerate(uniqueZValues):
             colorMapping[j] = colorsToUse[i % numberOfColors]
 
-    # Discretise the Z values based on the desired levels.
-    if levels:
-        minZValue = zValues.min()
-        maxZValue = zValues.max()
-        extendedLevels = [minZValue - 1] + levels + [maxZValue + 1]  # Extend the levels with the extra start and stop points.
-        enumeratedLevels = [(i,j) for i,j in enumerate(zip(extendedLevels[:-1], extendedLevels[1:]))]
-        zValues = sum([(j[0] < zValues) * (zValues <= j[1]) * (i + 1) for i,j in enumeratedLevels])
-
     # Determine some useful statistics about the input matrices.
     numberOfRows = zValues.shape[0]
     numberOfCols = zValues.shape[1]
+    xMin = xCoords.min()
+    xMax = xCoords.max()
     halfDeltaX = abs(xCoords[0,0] - xCoords[0,1]) / 2  # Half the distance between adjacent X coordinate values.
+    yMin = yCoords.min()
+    yMax = yCoords.max()
     halfDeltaY = abs(yCoords[0,0] - yCoords[1,0]) / 2  # Half the distance between adjacent Y coordinate values.
 
     # Determine which adjacent row values and column values are not equal (i.e. whether xCoords[i,j] == xCoords[i,j+1] and yCoords[i,j] == yCoords[i+1,j]).
@@ -151,12 +157,12 @@ def main(xCoords, yCoords, zValues, outputLocation=None, currentFigure=None, lev
     boundaryCoords -= set([()])  # Remove empty tuple. A square with all four corners equal is an empty tuple (no boundary goes through it)
 
     # Compute the paths that represent the boundaries and the outsides of the enclosed areas of a specific set of Z values.
-    paths = {}  # Dictionary indexed by the starting points, s, of boundary paths with the value associated with each starting point being a list of the
-                # vertices through which that boundary passes. Tells you the entire path given its starting point.
-    starts = {} # Dictionary indexed by the starting points, s, of boundary paths with the value associated with each starting point being the end point, e,
-                # of the path that starts at s. Tells you the endpoint of a path given its starting point.
-    ends = {}   # Dictionary indexed by the ending points, e, of boundary paths with the value associated with each ending point being the start point, s,
-                # of the path that ends at e. Tells you the starting point of a path given its ending point.
+    paths = {}         # Dictionary indexed by the starting points, s, of boundary paths with the value associated with each starting point being a list of
+                       # the vertices through which that boundary passes. Tells you the entire path given its starting point.
+    startsToEnds = {}  # Dictionary indexed by the starting points, s, of boundary paths with the value associated with each starting point being the end
+                       # point, e, of the path that starts at s. Tells you the endpoint of a path given its starting point.
+    endsToStarts = {}  # Dictionary indexed by the ending points, e, of boundary paths with the value associated with each ending point being the start
+                       # point, s, of the path that ends at e. Tells you the starting point of a path given its ending point.
     for i in boundaryCoords:
         # Loop through the squares and add any boundary segments that go through them.
         numberOfBoundaryPoints = len(i)
@@ -169,8 +175,8 @@ def main(xCoords, yCoords, zValues, outputLocation=None, currentFigure=None, lev
         newAlones = set([])  # Boundary segments to add that do not extend the start or end of an already existing boundary.
         for j, k in zip(i[:-1], i[1:]):
             toAdd = set([(j,k)])  # The tuple of vertices that represent the current boundary entry/exit point.
-            extendEnd = j in ends  # True if the start point of the square's boundary segment being checked is the end of an already existing boundary path.
-            extendStart = k in starts  # True if the end point of the square's boundary segment being checked is the start of an already existing boundary path.
+            extendEnd = j in endsToStarts  # True if the start point of the square's boundary segment being checked is the end of an already existing boundary path.
+            extendStart = k in startsToEnds  # True if the end point of the square's boundary segment being checked is the start of an already existing boundary path.
             if not (extendStart or extendEnd):
                 # The new boundary segment does not extend any existing boundary segments.
                 newAlones |= toAdd
@@ -193,101 +199,103 @@ def main(xCoords, yCoords, zValues, outputLocation=None, currentFigure=None, lev
             middleOfSquare = (middleOfSquareX, middleOfSquareY)
             for j,k in fillGaps:
                 # Get the point where the existing boundary that starts at k (the end of the current square's segment) ends.
-                endOfBoundaryStartingAtK = starts[k]
-                del starts[k]
+                endOfBoundaryStartingAtK = startsToEnds[k]
+                del startsToEnds[k]
                 # Get the point where the existing boundary that ends at j (the start of the current square's segment) starts.
-                startOfBoundaryEndingAtJ = ends[j]
-                del ends[j]
-                # The existing boundary that ends at j now ends at the end of the existing boundary that started at k.
-                starts[startOfBoundaryEndingAtJ] = endOfBoundaryStartingAtK
-                ends[endOfBoundaryStartingAtK] = startOfBoundaryEndingAtJ
+                startOfBoundaryEndingAtJ = endsToStarts[j]
+                del endsToStarts[j]
                 # Update the path to show that the gap has been filled.
                 startPath = paths[startOfBoundaryEndingAtJ]
                 startPath.append(middleOfSquare)
-                startPath.extend(paths[k])
                 if endOfBoundaryStartingAtK != j:
                     # Only delete the path starting at k if it does not end at j. If the path starting at k does end at j, then you have a loop and
                     # paths[k] will delete the whole loop.
+                    startPath.extend(paths[k])
                     del paths[k]
+                    # The existing boundary that ends at j now ends at the end of the existing boundary that started at k.
+                    startsToEnds[startOfBoundaryEndingAtJ] = endOfBoundaryStartingAtK
+                    endsToStarts[endOfBoundaryStartingAtK] = startOfBoundaryEndingAtJ
+                else:
+                    # Close the loop by adding k to the end of the path from k to j, thereby making it go from k to k. As there are two paths recorded for
+                    # each closed loop, do not update the dictionary of endpoints, as this will interfere with the correct recording of the second closed loop
+                    # path (i.e. do not do endsToStarts[k] = k).
+                    startPath.append(k)
+                    startsToEnds[k] = k
             for j,k in extendStarts:
                 # Get the point where the existing boundary that starts at k (the end of the current square's segment) ends.
-                endOfBoundaryStartingAtK = starts[k]
-                del starts[k]
+                endOfBoundaryStartingAtK = startsToEnds[k]
+                del startsToEnds[k]
                 # The existing boundary that started at k now starts at j.
-                starts[j] = endOfBoundaryStartingAtK
-                ends[endOfBoundaryStartingAtK] = j
+                startsToEnds[j] = endOfBoundaryStartingAtK
+                endsToStarts[endOfBoundaryStartingAtK] = j
                 # Update the paths to reflect that j is the new start point.
                 paths[j] = [j, middleOfSquare] + paths[k]
                 del paths[k]
             for j,k in extendEnds:
                 # Get the point where the existing boundary that ends at j (the start of the current square's segment) starts.
-                startOfBoundaryEndingAtJ = ends[j]
-                del ends[j]
+                startOfBoundaryEndingAtJ = endsToStarts[j]
+                del endsToStarts[j]
                 # The existing boundary that ends at j now ends at k.
-                ends[k] = startOfBoundaryEndingAtJ
-                starts[startOfBoundaryEndingAtJ] = k
+                endsToStarts[k] = startOfBoundaryEndingAtJ
+                startsToEnds[startOfBoundaryEndingAtJ] = k
                 # Update the paths to reflect that k is the new end point.
                 paths[startOfBoundaryEndingAtJ].extend([middleOfSquare, k])
             for j,k in newAlones:
                 # Add the new unconnected boundary segment.
                 paths[j] = [j,middleOfSquare,k]
-                starts[j] = k
-                ends[k] = j
+                startsToEnds[j] = k
+                endsToStarts[k] = j
         else:
             for j,k in fillGaps:
                 # Get the point where the existing boundary that starts at k (the end of the current square's segment) ends.
-                endOfBoundaryStartingAtK = starts[k]
-                del starts[k]
+                endOfBoundaryStartingAtK = startsToEnds[k]
+                del startsToEnds[k]
                 # Get the point where the existing boundary that ends at j (the start of the current square's segment) starts.
-                startOfBoundaryEndingAtJ = ends[j]
-                del ends[j]
-                # The existing boundary that ends at j now ends at the end of the existing boundary that started at k.
-                starts[startOfBoundaryEndingAtJ] = endOfBoundaryStartingAtK
-                ends[endOfBoundaryStartingAtK] = startOfBoundaryEndingAtJ
+                startOfBoundaryEndingAtJ = endsToStarts[j]
+                del endsToStarts[j]
                 # Update the path to show that the gap has been filled.
                 startPath = paths[startOfBoundaryEndingAtJ]
-                startPath.extend(paths[k])
                 if endOfBoundaryStartingAtK != j:
                     # Only delete the path starting at k if it does not end at j. If the path starting at k does end at j, then you have a loop and
                     # paths[k] will delete the whole loop.
+                    startPath.extend(paths[k])
                     del paths[k]
+                    # The existing boundary that ends at j now ends at the end of the existing boundary that started at k.
+                    startsToEnds[startOfBoundaryEndingAtJ] = endOfBoundaryStartingAtK
+                    endsToStarts[endOfBoundaryStartingAtK] = startOfBoundaryEndingAtJ
+                else:
+                    # Close the loop by adding k to the end of the path from k to j, thereby making it go from k to k. As there are two paths recorded for
+                    # each closed loop, do not update the dictionary of endpoints, as this will interfere with the correct recording of the second closed loop
+                    # path (i.e. do not do endsToStarts[k] = k).
+                    startPath.append(k)
+                    startsToEnds[k] = k
             for j,k in extendStarts:
                 # Get the point where the existing boundary that starts at k (the end of the current square's segment) ends.
-                endOfBoundaryStartingAtK = starts[k]
-                del starts[k]
+                endOfBoundaryStartingAtK = startsToEnds[k]
+                del startsToEnds[k]
                 # The existing boundary that started at k now starts at j.
-                starts[j] = endOfBoundaryStartingAtK
-                ends[endOfBoundaryStartingAtK] = j
+                startsToEnds[j] = endOfBoundaryStartingAtK
+                endsToStarts[endOfBoundaryStartingAtK] = j
                 # Update the paths to reflect that j is the new start point.
                 paths[j] = [j] + paths[k]
                 del paths[k]
             for j,k in extendEnds:
                 # Get the point where the existing boundary that ends at j (the start of the current square's segment) starts.
-                startOfBoundaryEndingAtJ = ends[j]
-                del ends[j]
+                startOfBoundaryEndingAtJ = endsToStarts[j]
+                del endsToStarts[j]
                 # The existing boundary that ends at j now ends at k.
-                ends[k] = startOfBoundaryEndingAtJ
-                starts[startOfBoundaryEndingAtJ] = k
+                endsToStarts[k] = startOfBoundaryEndingAtJ
+                startsToEnds[startOfBoundaryEndingAtJ] = k
                 # Update the paths to reflect that k is the new end point.
                 paths[startOfBoundaryEndingAtJ].append(k)
             for j,k in newAlones:
                 # Add the new unconnected boundary segment.
                 paths[j] = [j,k]
-                starts[j] = k
-                ends[k] = j
-
-    if fill == 1:
-        # Place the color dots on the graph.
-        xValuesForDots = pandas.DataFrame([j for i in xCoords for j in i])
-        yValuesForDots = pandas.DataFrame([j for i in yCoords for j in i])
-        zValuesForDots = pandas.Series([j for i in zValues for j in i])
-        scatter.plot(xValuesForDots, yValuesForDots, classLabels=zValuesForDots, currentFigure=currentFigure, size=dotSize, edgeColor='none',
-                     title=title, xLabel=xLabel, yLabel=yLabel, faceColorSet=colorSet, linewidths=0, alpha=fillAlpha, legend=legend)
-    elif fill == 2:
-        # Fill the regions with solid colors.
-        pass
+                startsToEnds[j] = k
+                endsToStarts[k] = j
 
     if boundary:
+        # Add the boundaries if requested.
         for i in paths:
             verts = paths[i]
             codes = [path.Path.MOVETO] + ([path.Path.LINETO] * (len(verts) - 1))
@@ -295,7 +303,138 @@ def main(xCoords, yCoords, zValues, outputLocation=None, currentFigure=None, lev
             patch = patches.PathPatch(boundary, facecolor='none', linewidth=boundaryWidth, edgecolor=boundaryColor, alpha=1, linestyle='solid')
             axes.add_patch(patch)
 
+    if fill == 1:
+        # Place the color dots on the graph.
+        xValuesForDots = pandas.DataFrame([j for i in xCoords for j in i])
+        yValuesForDots = pandas.DataFrame([j for i in yCoords for j in i])
+        zValuesForDots = pandas.Series([j for i in zValues for j in i])
+        scatter.plot(xValuesForDots, yValuesForDots, classLabels=zValuesForDots, currentFigure=currentFigure, size=dotSize, edgeColor='none',
+                     title=title, xLabel=xLabel, yLabel=yLabel, colorMapping=colorMapping, linewidths=0, alpha=fillAlpha, legend=legend)
+    elif fill == 2:
+        # Fill the regions with solid colors.
+        pathsStartsToRegionZValues = {}
+
+        # First determine the color of all already closed paths (i.e. paths that do not touch an edge). Each already closed edge is represented
+        # by a counterclockwise and clockwise path (representing the interior and everything exterior of the closed region respectively). In order to
+        # stay consistent with all other paths, any clockwise path is to be removed.
+        closedPathStarts = set([i for i in startsToEnds if startsToEnds[i] == i])
+        for i in closedPathStarts:
+            pathIsCCW, areaZValue = test_clockwise(paths[i], xCoords, halfDeltaX, yCoords, halfDeltaY, zValues)
+            if pathIsCCW:
+                pathsStartsToRegionZValues[i] = areaZValue
+
+        # Second, find all open paths (those where the start != end) and close them.
+        openPathStarts = set([i for i in startsToEnds if startsToEnds[i] != i])
+        closedPaths, pathStartToZValue = close_paths(paths, openPathStarts, startsToEnds, endsToStarts, xCoords, halfDeltaX, yCoords, halfDeltaY, zValues)
+        for i in closedPaths:
+            paths[i] = closedPaths[i]  # Update the record of the paths with the closed path.
+        for i in pathStartToZValue:
+            pathsStartsToRegionZValues[i] = pathStartToZValue[i]  # Update the mapping of the path start to Z value it encloses with the new closed paths.
+
+        # Determine the hierarchy of patches in order to determine where to make holes in the patches to prevent overlaps.
+
+        # Fill in the area using the patches.
+        for i in pathsStartsToRegionZValues:
+            verts = paths[i]
+            codes = [path.Path.MOVETO] + ([path.Path.LINETO] * (len(verts) - 1))
+            boundary = path.Path(verts, codes)
+            patch = patches.PathPatch(boundary, facecolor=colorMapping[pathsStartsToRegionZValues[i]], linewidth=0, edgecolor='none', alpha=fillAlpha, zorder=-1)
+            axes.add_patch(patch)
+
     if outputLocation:
         plt.savefig(outputLocation, bbox_inches='tight', transparent=True)
     else:
         return currentFigure, axes
+
+
+def close_paths(paths, openStartingPoints, startsToEnds, endsToStarts, xCoords, halfDeltaX, yCoords, halfDeltaY, zValues):
+    """
+    All these boundaries will have both start an ending points on an edge of the figure.
+    """
+
+    newPaths = {}
+    pathStartToZValue = {}
+
+    # First close paths that start and end on the same edge.
+    closedStartPoints = set([])
+    for i in openStartingPoints:
+        currentPath = [j for j in paths[i]]
+        startXCoord = i[0]
+        startYCoord = i[1]
+        endOfPath = currentPath[-1]
+        endXCoord = endOfPath[0]
+        endYCoord = endOfPath[1]
+        if (startXCoord == endXCoord) or (startYCoord == endYCoord):
+            # The path start and ends on the same edge, so close the path
+            currentPath.append(i)
+            pathIsCCW, areaZValue = test_clockwise(currentPath, xCoords, halfDeltaX, yCoords, halfDeltaY, zValues)
+            if pathIsCCW:
+                pathStartToZValue[i] = areaZValue
+                newPaths[i] = currentPath
+                closedStartPoints.add(i)
+    openStartingPoints -= closedStartPoints
+
+    # Next close paths that start and end on different edges of the figure.
+    currentlyOpenPaths = set([i for i in openStartingPoints])
+    while openStartingPoints:
+        currentStartingPoint = openStartingPoints.pop()
+        currentPath = [i for i in paths[currentStartingPoint]]
+
+    return newPaths, pathStartToZValue
+
+
+def test_clockwise(pathVertices, xCoords, halfDeltaX, yCoords, halfDeltaY, zValues):
+    # A path can be determined to be clockwise by looking at the first line segment of the path, finding the point to its left and determining
+    # if that point is within the path. A line segment from a counterclockwise path will contain the point to its left, a clockwise segment will not.
+    codes = [path.Path.MOVETO] + ([path.Path.LINETO] * (len(pathVertices) - 1))
+    boundary = path.Path(pathVertices, codes)
+
+    # Determine the endpoints of the first line segment of the path.
+    firstSegmentStartX = pathVertices[0][0]
+    firstSegmentStartY = pathVertices[0][1]
+    firstSegmentEndX = pathVertices[1][0]
+    firstSegmentEndY = pathVertices[1][1]
+
+    verticalLine = firstSegmentStartX == firstSegmentEndX
+    horzontalLine = firstSegmentStartY == firstSegmentEndY
+    up = firstSegmentStartY < firstSegmentEndY
+    down = firstSegmentStartY > firstSegmentEndY
+    left = firstSegmentStartX > firstSegmentEndX
+    right = firstSegmentStartX < firstSegmentEndX
+    onXGrid = np.where(xCoords == firstSegmentStartX)[0].size > 0
+    onYGrid = np.where(yCoords == firstSegmentStartY)[0].size > 0
+
+    pointToCheck = None
+    CCW = True
+    if verticalLine and up:
+        pointToCheck = (firstSegmentStartX - halfDeltaX, firstSegmentStartY)
+    elif verticalLine and down:
+        pointToCheck = (firstSegmentStartX + halfDeltaX, firstSegmentStartY)
+    elif horzontalLine and left:
+        pointToCheck = (firstSegmentStartX, firstSegmentStartY - halfDeltaY)
+    elif horzontalLine and right:
+        pointToCheck = (firstSegmentStartX, firstSegmentStartY + halfDeltaY)
+    elif onYGrid and up:
+        # On bottom mid edge of square and going towards left and up to left mid edge of square or right and up to right mid edge
+        pointToCheck = (firstSegmentStartX - halfDeltaX, firstSegmentStartY)
+    elif onYGrid and down:
+        # On top mid edge of square and going towards left and down to left mid edge of square or right and down to right mid edge
+        pointToCheck = (firstSegmentStartX + halfDeltaX, firstSegmentStartY)
+    elif right:  # and onXGrid
+        # On left mid edge of square and going towards right and up to top mid edge of square or right and down to bottom mid edge of square
+        pointToCheck = (firstSegmentStartX, firstSegmentStartY + halfDeltaY)
+    else:  # going left and onXGrid
+        # On right mid edge of square and going towards left and up to top mid edge of square or left and down to bottom mid edge of square
+        pointToCheck = (firstSegmentStartX, firstSegmentStartY - halfDeltaY)
+    CCW = boundary.contains_point(pointToCheck, radius=min(halfDeltaX, halfDeltaY) / 2)  # Inflate slightly as this might be on a boundary (edge of the figure) and any point
+                                                                    # directly on a path boundary edge does not count as inside the path
+
+    if not CCW:
+        # The point to the left is not within the boundary so the path is going CW.
+        return False, 'none'
+
+    # Get the Z value of the interior of a counterclockwise path. This is the Z value of the point on the meshgrid at pointToCheck.
+    # Rounding is used in order to accurately compare floating point numbers.
+    indexY = np.where(xCoords.round(6) == np.around(pointToCheck[0], 6))[1][0]
+    indexX = np.where(yCoords.round(6) == np.around(pointToCheck[1], 6))[0][0]
+    return True, zValues[indexX, indexY]
