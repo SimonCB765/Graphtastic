@@ -116,10 +116,12 @@ def main(xCoords, yCoords, zValues, outputLocation=None, currentFigure=None, lev
     numberOfCols = zValues.shape[1]
     xMin = xCoords.min()
     xMax = xCoords.max()
-    halfDeltaX = abs(xCoords[0,0] - xCoords[0,1]) / 2  # Half the distance between adjacent X coordinate values.
+    halfDeltaX = abs(np.ediff1d([xCoords[0,0], xCoords[0,1]]))[0] / 2  # Half the distance between adjacent X coordinate values.
+#    halfDeltaX = abs(xCoords[0,0] - xCoords[0,1]) / 2  # Half the distance between adjacent X coordinate values.
     yMin = yCoords.min()
     yMax = yCoords.max()
-    halfDeltaY = abs(yCoords[0,0] - yCoords[1,0]) / 2  # Half the distance between adjacent Y coordinate values.
+    halfDeltaY = abs(np.ediff1d([yCoords[0,0], yCoords[1,0]]))[0] / 2  # Half the distance between adjacent Y coordinate values.
+#    halfDeltaY = abs(yCoords[0,0] - yCoords[1,0]) / 2  # Half the distance between adjacent Y coordinate values.
 
     # Determine which adjacent row values and column values are not equal (i.e. whether xCoords[i,j] == xCoords[i,j+1] and yCoords[i,j] == yCoords[i+1,j]).
     # The test will be for whether each entry is equal to the value to its right (for row ==) or below it (for column ==).
@@ -325,18 +327,25 @@ def main(xCoords, yCoords, zValues, outputLocation=None, currentFigure=None, lev
 
         # Second, find all open paths (those where the start != end) and close them.
         openPathStarts = set([i for i in startsToEnds if startsToEnds[i] != i])
-        closedPaths, pathStartToZValue = close_paths(paths, openPathStarts, startsToEnds, endsToStarts, xCoords, halfDeltaX, yCoords, halfDeltaY, zValues)
+        closedPaths, pathStartToZValue = close_paths(paths, openPathStarts, startsToEnds, xCoords, halfDeltaX, yCoords, halfDeltaY, zValues)
         for i in closedPaths:
             paths[i] = closedPaths[i]  # Update the record of the paths with the closed path.
         for i in pathStartToZValue:
             pathsStartsToRegionZValues[i] = pathStartToZValue[i]  # Update the mapping of the path start to Z value it encloses with the new closed paths.
 
         # Determine the hierarchy of patches in order to determine where to make holes in the patches to prevent overlaps.
+        removeInternalPaths = calc_area_hierarchy([i for i in pathsStartsToRegionZValues], paths)
+        print(removeInternalPaths)
 
         # Fill in the area using the patches.
         for i in pathsStartsToRegionZValues:
             verts = paths[i]
             codes = [path.Path.MOVETO] + ([path.Path.LINETO] * (len(verts) - 1))
+            for j in removeInternalPaths[i]:
+                # For each internal path that needs to be removed from the patch plotted, reverse its path (so that it' CW) and add it.
+                pathOfJ = paths[j]
+                verts += pathOfJ[::-1]
+                codes += [path.Path.MOVETO] + ([path.Path.LINETO] * (len(pathOfJ) - 1))
             boundary = path.Path(verts, codes)
             patch = patches.PathPatch(boundary, facecolor=colorMapping[pathsStartsToRegionZValues[i]], linewidth=0, edgecolor='none', alpha=fillAlpha, zorder=-1)
             axes.add_patch(patch)
@@ -347,10 +356,55 @@ def main(xCoords, yCoords, zValues, outputLocation=None, currentFigure=None, lev
         return currentFigure, axes
 
 
-def close_paths(paths, openStartingPoints, startsToEnds, endsToStarts, xCoords, halfDeltaX, yCoords, halfDeltaY, zValues):
+def calc_area_hierarchy(pathStarts, paths):
+    """
+    """
+
+    # Create the Path objects for all the enclosed areas.
+    boundaries = dict([(i, path.Path(paths[i], [path.Path.MOVETO] + ([path.Path.LINETO] * (len(paths[i]) - 1)))) for i in pathStarts])
+
+    # Determine the areas that are inside each area.
+    nested = {}
+    for i in pathStarts:
+        boundary = boundaries[i]
+        areasContained = [j for j in pathStarts if boundary.contains_path(boundaries[j])]
+        nested[i] = areasContained
+
+    # Update the paths that contain an area inside them in order to ensure no overlap of colorings. This requires going in a CW motion around the internal
+    # path in order to cut it out of the outside area.
+    remove = {}
+    for i in nested:
+        # Search through the areas with other areas inside them. This requires finding the fewest areas that cover all the areas contained in the current
+        # area. For example, the current area may have two disjoint areas, A and B, inside it. In turn, A has 1 area inside it and B has 2 areas inside it.
+        # The current area therefore has 5 areas inside it. The fewest areas that can be removed from the current area that covers all areas inside it is
+        # to remove A and B.
+        internalsSortedBySizeDecreasing = sorted(nested[i], key=lambda x : len(nested[x]), reverse=True)
+        included = set([])
+        toRemove = set([])
+        for j in internalsSortedBySizeDecreasing:
+            if not j in included:
+                # If j has not been included in the set already, then it is a top level area inside the external area. Therefore, add it to toRemove.
+                toRemove.add(j)
+            # Indicate that j and all the areas inside it have been dealt with.
+            included |= set(nested[j])
+
+        remove[i] = toRemove
+
+    return remove
+
+
+def close_paths(paths, openStartingPoints, startsToEnds, xCoords, halfDeltaX, yCoords, halfDeltaY, zValues):
     """
     All these boundaries will have both start an ending points on an edge of the figure.
     """
+
+    # Determine boundaries of the (X,Y) grid.
+    xMin = xCoords.min()
+    xMax = xCoords.max()
+    deltaX = abs(np.ediff1d([xCoords[0,0], xCoords[0,1]]))[0]  # The distance between adjacent X coordinate values.
+    yMin = yCoords.min()
+    yMax = yCoords.max()
+    deltaY = abs(np.ediff1d([yCoords[0,0], yCoords[1,0]]))[0]  # The distance between adjacent Y coordinate values.
 
     newPaths = {}
     pathStartToZValue = {}
@@ -375,10 +429,85 @@ def close_paths(paths, openStartingPoints, startsToEnds, endsToStarts, xCoords, 
     openStartingPoints -= closedStartPoints
 
     # Next close paths that start and end on different edges of the figure.
-    currentlyOpenPaths = set([i for i in openStartingPoints])
     while openStartingPoints:
         currentStartingPoint = openStartingPoints.pop()
         currentPath = [i for i in paths[currentStartingPoint]]
+
+        # Travel around the edges of the figure in a CCW motion to close the path.
+        currentPosition = currentPath[-1]
+        currentXMovement = 0 if (np.allclose([currentPosition[0]], [xMax]) or np.allclose([currentPosition[0]], [xMin])) else (deltaX if np.allclose([currentPosition[1]], [yMin]) else -deltaX)
+        currentYMovement = 0 if (np.allclose([currentPosition[1]], [yMax]) or np.allclose([currentPosition[1]], [yMin])) else (deltaY if np.allclose([currentPosition[0]], [xMax]) else -deltaY)
+        while not np.allclose([currentPosition], [currentStartingPoint]):
+            # Update the current position being examined.
+            currentPosition = (currentPosition[0] + currentXMovement, currentPosition[1] + currentYMovement)
+
+            # If the current position is the start of another path, then append the paths together as they must be part of the same area boundary.
+            otherPathStart = [i for i in openStartingPoints if np.allclose([currentPosition], [i])]
+            if otherPathStart:
+                currentPosition = otherPathStart[0]
+                openStartingPoints -= set([currentPosition])
+                currentPath.extend(paths[currentPosition])
+                currentPosition = paths[currentPosition][-1]
+                currentXMovement = 0 if (np.allclose([currentPosition[0]], [xMax]) or np.allclose([currentPosition[0]], [xMin])) else (deltaX if np.allclose([currentPosition[1]], [yMin]) else -deltaX)
+                currentYMovement = 0 if (np.allclose([currentPosition[1]], [yMax]) or np.allclose([currentPosition[1]], [yMin])) else (deltaY if np.allclose([currentPosition[0]], [xMax]) else -deltaY)
+
+            # Determine if the currentXMovement and currentYMovement need updating.
+            if np.allclose([currentPosition[0]], [xMax + halfDeltaX]):
+                # Gone past the rightmost edge of the figure while travelling along the bottom edge of the figure.
+                currentPath.append((xMax, yMin))  # Add the bottom right corner to the path
+                currentPosition = (xMax, yMin + halfDeltaY)  # Go up a half step from the bottom right corner.
+                currentPath.append(currentPosition)  # Add the new point.
+                # Now travelling upwards along the rightmost edge.
+                currentXMovement = 0
+                currentYMovement = deltaY
+            elif np.allclose([currentPosition[0]], [xMin - halfDeltaX]):
+                # Gone past the leftmost edge of the figure while travelling along the top edge of the figure.
+                currentPath.append((xMin, yMax))  # Add the top left corner to the path
+                currentPosition = (xMin, yMax - halfDeltaY)  # Go down a half step from the top left corner.
+                currentPath.append(currentPosition)  # Add the new point.
+                # Now travelling downwards along the leftmost edge.
+                currentXMovement = 0
+                currentYMovement = -deltaY
+            elif np.allclose([currentPosition[1]], [yMax + halfDeltaY]):
+                # Gone past the top edge of the figure while travelling along the rightmost edge of the figure.
+                currentPath.append((xMax, yMax))  # Add the top right corner to the path
+                currentPosition = (xMax - halfDeltaX, yMax)  # Go left a half step from the top right corner.
+                currentPath.append(currentPosition)  # Add the new point.
+                # Now travelling leftwards along the top edge.
+                currentXMovement = -deltaX
+                currentYMovement = 0
+            elif np.allclose([currentPosition[1]], [yMin - halfDeltaY]):
+                # Gone past the bottom edge of the figure while travelling along the leftmost edge of the figure.
+                currentPath.append((xMin, yMin))  # Add the bottom left corner to the path
+                currentPosition = (xMin + halfDeltaX, yMin)  # Go right a half step from the bottom left corner.
+                currentPath.append(currentPosition)  # Add the new point.
+                # Now travelling rightwards along the bottom edge.
+                currentXMovement = deltaX
+                currentYMovement = 0
+
+        # Close the path now that the starting point has been reached.
+        currentPath.append(currentStartingPoint)
+
+        # Determine the Z value of the are enclosed by the path (this is the Z value of the point on the (X,Y) grid one half step CW from the starting point.
+        if np.allclose([currentStartingPoint[0]], [xMin]):
+            # Starting point is on the leftmost edge of the figure.
+            pointToCheck = (currentStartingPoint[0], currentStartingPoint[1] + halfDeltaY)
+        elif np.allclose([currentStartingPoint[0]], [xMax]):
+            # Starting point is on the rightmost edge of the figure.
+            pointToCheck = (currentStartingPoint[0], currentStartingPoint[1] - halfDeltaY)
+        elif np.allclose([currentStartingPoint[1]], [yMin]):
+            # Starting point is on the bottommost edge of the figure.
+            pointToCheck = (currentStartingPoint[0] - halfDeltaX, currentStartingPoint[1])
+        else:  # if np.allclose([currentStartingPoint[1]], [yMax])
+            # Starting point is on the topmost edge of the figure.
+            pointToCheck = (currentStartingPoint[0] + halfDeltaX, currentStartingPoint[1])
+        indexY = np.where(xCoords.round(6) == np.around(pointToCheck[0], 6))[1][0]
+        indexX = np.where(yCoords.round(6) == np.around(pointToCheck[1], 6))[0][0]
+        areaZValue = zValues[indexX, indexY]
+
+        # Record the path and Z value information for the starting point.
+        pathStartToZValue[currentStartingPoint] = areaZValue
+        newPaths[currentStartingPoint] = currentPath
 
     return newPaths, pathStartToZValue
 
