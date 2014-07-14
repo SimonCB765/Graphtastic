@@ -15,11 +15,11 @@ def main(xCoords, yCoords, zValues, outputLocation=None, currentFigure=None, lev
     The X and Y coordinate values should be supplied such that the smallest coordinates are at index [0, 0] and the largest at [-1, -1] (as would be
     returned by calling np.arange followed by np.meshgrid).
 
-    Solid filling (fill==2) can be temperamental when the resolution of the (X,Y) grid gets very small (e.g. 10x10).
+    Solid filling (fill==2) can be temperamental when the resolution of the (X,Y) grid gets very low (e.g. 10x10).
 
-    :param xCoords:                 The x coordinates where the class values have been evaluated.
+    :param xCoords:                 The x coordinates where the Z values have been evaluated.
     :type xCoords:                  2 dimensional numpy array
-    :param yCoords:                 The y coordinates where the class values have been evaluated.
+    :param yCoords:                 The y coordinates where the Z values have been evaluated.
     :type yCoords:                  2 dimensional numpy array
     :param zValues:                 The z value for each (x,y) pair.
     :type zValues:                  2 dimensional numpy array
@@ -117,11 +117,9 @@ def main(xCoords, yCoords, zValues, outputLocation=None, currentFigure=None, lev
     xMin = xCoords.min()
     xMax = xCoords.max()
     halfDeltaX = abs(np.ediff1d([xCoords[0,0], xCoords[0,1]]))[0] / 2  # Half the distance between adjacent X coordinate values.
-#    halfDeltaX = abs(xCoords[0,0] - xCoords[0,1]) / 2  # Half the distance between adjacent X coordinate values.
     yMin = yCoords.min()
     yMax = yCoords.max()
     halfDeltaY = abs(np.ediff1d([yCoords[0,0], yCoords[1,0]]))[0] / 2  # Half the distance between adjacent Y coordinate values.
-#    halfDeltaY = abs(yCoords[0,0] - yCoords[1,0]) / 2  # Half the distance between adjacent Y coordinate values.
 
     # Determine which adjacent row values and column values are not equal (i.e. whether xCoords[i,j] == xCoords[i,j+1] and yCoords[i,j] == yCoords[i+1,j]).
     # The test will be for whether each entry is equal to the value to its right (for row ==) or below it (for column ==).
@@ -314,15 +312,16 @@ def main(xCoords, yCoords, zValues, outputLocation=None, currentFigure=None, lev
                      title=title, xLabel=xLabel, yLabel=yLabel, colorMapping=colorMapping, linewidths=0, alpha=fillAlpha, legend=legend)
     elif fill == 2:
         # Fill the regions with solid colors.
-        pathsStartsToRegionZValues = {}
+        pathsStartsToRegionZValues = {}  # A record of the starting points of each path to output, along with the Z value of its interior.
 
-        # First determine the color of all already closed paths (i.e. paths that do not touch an edge). Each already closed edge is represented
-        # by a counterclockwise and clockwise path (representing the interior and everything exterior of the closed region respectively). In order to
-        # stay consistent with all other paths, any clockwise path is to be removed.
+        # First determine the color of all already closed paths (i.e. paths that do not touch an edge of the (X, Y) grid). Each already closed path is
+        # represented by a counter-clockwise and clockwise path (representing the interior and everything exterior of the closed region respectively).
+        # In order to stay consistent with all other paths, any clockwise path is to be removed.
         closedPathStarts = set([i for i in startsToEnds if startsToEnds[i] == i])
         for i in closedPathStarts:
             pathIsCCW, areaZValue = test_clockwise(paths[i], xCoords, halfDeltaX, yCoords, halfDeltaY, zValues)
             if pathIsCCW:
+                # The path is counter-clockwise, so record it as being kept along with its Z value.
                 pathsStartsToRegionZValues[i] = areaZValue
 
         # Second, find all open paths (those where the start != end) and close them.
@@ -331,18 +330,22 @@ def main(xCoords, yCoords, zValues, outputLocation=None, currentFigure=None, lev
         for i in closedPaths:
             paths[i] = closedPaths[i]  # Update the record of the paths with the closed path.
         for i in pathStartToZValue:
-            pathsStartsToRegionZValues[i] = pathStartToZValue[i]  # Update the mapping of the path start to Z value it encloses with the new closed paths.
+            # For all the newly closed paths, map their starting point to their interior Z value.
+            pathsStartsToRegionZValues[i] = pathStartToZValue[i]
 
-        # Determine the hierarchy of patches in order to determine where to make holes in the patches to prevent overlaps.
+        # Determine the hierarchy of patches in order to determine where to make holes in the patches to prevent overlaps. This is necessary in order to
+        # correctly plot smaller patches that are completely contained within a larger patch. With an alpha vale of 1, if a larger patch A is plotted after
+        # a smaller patch B that is completely contained within A, then patch B will not be visible. If the alpha value is not 1, then the overlapping
+        # patches will both be visible, but will combine their colors and be darker (due to the adding of overlapping alpha values) than the other patches.
         removeInternalPaths = calc_area_hierarchy([i for i in pathsStartsToRegionZValues], paths)
-        print(removeInternalPaths)
 
         # Fill in the area using the patches.
         for i in pathsStartsToRegionZValues:
             verts = paths[i]
             codes = [path.Path.MOVETO] + ([path.Path.LINETO] * (len(verts) - 1))
             for j in removeInternalPaths[i]:
-                # For each internal path that needs to be removed from the patch plotted, reverse its path (so that it' CW) and add it.
+                # For each path P that is completely contained within the current path, reverse P's vertices (so that it's clockwise) and add the
+                # vertices to the current path's vertices. This will cause the smaller internal path to appear as a hole in the larger external patch.
                 pathOfJ = paths[j]
                 verts += pathOfJ[::-1]
                 codes += [path.Path.MOVETO] + ([path.Path.LINETO] * (len(pathOfJ) - 1))
@@ -513,8 +516,28 @@ def close_paths(paths, openStartingPoints, startsToEnds, xCoords, halfDeltaX, yC
 
 
 def test_clockwise(pathVertices, xCoords, halfDeltaX, yCoords, halfDeltaY, zValues):
-    # A path can be determined to be clockwise by looking at the first line segment of the path, finding the point to its left and determining
-    # if that point is within the path. A line segment from a counterclockwise path will contain the point to its left, a clockwise segment will not.
+    """Test whether a path is counter-clockwise.
+
+    Can be used with open paths, but is not guaranteed to return the correct result.
+
+    :param pathVertices:    The vertices that make up the path.
+    :type pathVertices:     list of (x, y) coordinate tuples
+    :param xCoords:         The x coordinates where the Z values have been evaluated.
+    :type xCoords:          2 dimensional numpy array
+    :param halfDeltaX:      Half the distance between adjacent X coordinate values.
+    :type halfDeltaX:       float
+    :param yCoords:         The y coordinates where the Z values have been evaluated.
+    :type yCoords:          2 dimensional numpy array
+    :param halfDeltaY:      Half the distance between adjacent Y coordinate values.
+    :type halfDeltaY:       float
+    :param zValues:         The z value for each (x,y) pair.
+    :type zValues:          2 dimensional numpy array
+    :returns :              Whether the path s counter-clockwise, and the Z value of the interior of the path.
+    :type :                 boolean, float
+
+    """
+
+    # Create the path object from the vertices.
     codes = [path.Path.MOVETO] + ([path.Path.LINETO] * (len(pathVertices) - 1))
     boundary = path.Path(pathVertices, codes)
 
@@ -524,45 +547,89 @@ def test_clockwise(pathVertices, xCoords, halfDeltaX, yCoords, halfDeltaY, zValu
     firstSegmentEndX = pathVertices[1][0]
     firstSegmentEndY = pathVertices[1][1]
 
-    verticalLine = firstSegmentStartX == firstSegmentEndX
-    horzontalLine = firstSegmentStartY == firstSegmentEndY
-    up = firstSegmentStartY < firstSegmentEndY
-    down = firstSegmentStartY > firstSegmentEndY
-    left = firstSegmentStartX > firstSegmentEndX
-    right = firstSegmentStartX < firstSegmentEndX
-    onXGrid = np.where(xCoords == firstSegmentStartX)[0].size > 0
-    onYGrid = np.where(yCoords == firstSegmentStartY)[0].size > 0
+    # Determine the direction that the first line segment goes, and where is starts on the (X, Y) gridlines.
+    # If the (X, Y) grid contains all x values in [0, 1] and all Y values in [0, 1], then halfDeltaX and halfDeltaY would be 0.5. Therefore,
+    # the grid would be like:
+    # (0,0)    (1,0)
+    #
+    # (0,1)    (1,1)
+    # and the first line segment could start at A) (0, 0.5), B) (0.5, 1), C) (1, 0.5), or D) (0.5, 0).
+    # A and C are on the X gridlines, while B and D are on the Y gridlines.
+    verticalLine = firstSegmentStartX == firstSegmentEndX   # The fist line segment is vertical.
+    horzontalLine = firstSegmentStartY == firstSegmentEndY  # The fist line segment is horizontal.
+    up = firstSegmentStartY < firstSegmentEndY              # The fist line segment goes up (not necessarily vertical).
+    down = firstSegmentStartY > firstSegmentEndY            # The fist line segment goes down (not necessarily vertical).
+    left = firstSegmentStartX > firstSegmentEndX            # The fist line segment goes left (not necessarily horizontal).
+    right = firstSegmentStartX < firstSegmentEndX           # The fist line segment goes right (not necessarily horizontal).
+    onXGrid = np.where(xCoords == firstSegmentStartX)[0].size > 0  # True if the first line segment starts on a line on the X grid.
+    onYGrid = np.where(yCoords == firstSegmentStartY)[0].size > 0  # True if the first line segment starts on a line on the Y grid.
 
-    pointToCheck = None
-    CCW = True
+    # A path will only be counter-clockwise if a specific point is in the interior of the path. This specific point depends on the direction that
+    # the first line segment of the path goes, and is based on the splitting of the meshgrid into individual squares that have been evaluated separately.
+    pointToCheck = None  # The point that should be checked to determine the Z value of the interior of the path.
+    CCW = True  # Whether the path is counter-clockwise.
     if verticalLine and up:
-        pointToCheck = (firstSegmentStartX - halfDeltaX, firstSegmentStartY)
+        # If the first line segment goes vertically up, then it divides the square into a left and right. The two points that make up the left corners
+        # of the square must be inside the path if it is to be counter-clockwise.
+        pointToCheck = (firstSegmentStartX - halfDeltaX, firstSegmentStartY)  # The bottom left corner of the square.
     elif verticalLine and down:
-        pointToCheck = (firstSegmentStartX + halfDeltaX, firstSegmentStartY)
+        # If the first line segment goes vertically down, then it divides the square into a left and right. The two points that make up the right corners
+        # of the square must be inside the path if it is to be counter-clockwise.
+        pointToCheck = (firstSegmentStartX + halfDeltaX, firstSegmentStartY)  # The top right corner of the square.
     elif horzontalLine and left:
-        pointToCheck = (firstSegmentStartX, firstSegmentStartY - halfDeltaY)
+        # If the first line segment goes horizontal and left, then it divides the square into a top and bottom. The two points that make up the bottom corners
+        # of the square must be inside the path if it is to be counter-clockwise.
+        pointToCheck = (firstSegmentStartX, firstSegmentStartY - halfDeltaY)  # The bottom right corner of the square.
     elif horzontalLine and right:
-        pointToCheck = (firstSegmentStartX, firstSegmentStartY + halfDeltaY)
+        # If the first line segment goes horizontal and right, then it divides the square into a top and bottom. The two points that make up the top corners
+        # of the square must be inside the path if it is to be counter-clockwise.
+        pointToCheck = (firstSegmentStartX, firstSegmentStartY + halfDeltaY)  # The top left corner of the square.
     elif onYGrid and up:
-        # On bottom mid edge of square and going towards left and up to left mid edge of square or right and up to right mid edge
-        pointToCheck = (firstSegmentStartX - halfDeltaX, firstSegmentStartY)
+        # If the first line segment starts on the Y grid lines and goes upwards, then it begins in middle of the bottom edge of the square, and goes either
+        # up to the middle of the left edge or up to the middle of the right edge. The square therefore looks as follows:
+        # X  X
+        # \  /
+        # P\/X
+        # In order for the path to be counter-clockwise, point P must be on the interior of the path.
+        pointToCheck = (firstSegmentStartX - halfDeltaX, firstSegmentStartY)  # Point P on the square.
     elif onYGrid and down:
-        # On top mid edge of square and going towards left and down to left mid edge of square or right and down to right mid edge
-        pointToCheck = (firstSegmentStartX + halfDeltaX, firstSegmentStartY)
+        # If the first line segment starts on the Y grid lines and goes down, then it begins in middle of the top edge of the square, and goes either
+        # down to the middle of the left edge or down to the middle of the right edge. The square therefore looks as follows:
+        # X/\P
+        # /  \
+        # X  X
+        # In order for the path to be counter-clockwise, point P must be on the interior of the path.
+        pointToCheck = (firstSegmentStartX + halfDeltaX, firstSegmentStartY)  # Point P on the square.
     elif right:  # and onXGrid
-        # On left mid edge of square and going towards right and up to top mid edge of square or right and down to bottom mid edge of square
-        pointToCheck = (firstSegmentStartX, firstSegmentStartY + halfDeltaY)
-    else:  # going left and onXGrid
-        # On right mid edge of square and going towards left and up to top mid edge of square or left and down to bottom mid edge of square
-        pointToCheck = (firstSegmentStartX, firstSegmentStartY - halfDeltaY)
-    CCW = boundary.contains_point(pointToCheck, radius=min(halfDeltaX, halfDeltaY) / 2)  # Inflate slightly as this might be on a boundary (edge of the figure) and any point
-                                                                    # directly on a path boundary edge does not count as inside the path
+        # If the first line segment starts on the X grid lines and goes right, then it begins in middle of the left edge of the square, and goes either
+        # down to the middle of the bottom edge or up to the middle of the top edge. The square therefore looks as follows:
+        # P/  X
+        # /
+        # \
+        # X\  X
+        # In order for the path to be counter-clockwise, point P must be on the interior of the path.
+        pointToCheck = (firstSegmentStartX, firstSegmentStartY + halfDeltaY)  # Point P on the square.
+    else:  # left and onXGrid
+        # If the first line segment starts on the X grid lines and goes left, then it begins in middle of the right edge of the square, and goes either
+        # down to the middle of the bottom edge or up to the middle of the top edge. The square therefore looks as follows:
+        # X  \X
+        #     \
+        #     /
+        # X  /P
+        # In order for the path to be counter-clockwise, point P must be on the interior of the path.
+        pointToCheck = (firstSegmentStartX, firstSegmentStartY - halfDeltaY)  # Point P on the square.
+
+    # Inflate the path slightly when checking whether pointToCheck is inside the path as pointToCheck might be on the edge of the path (only if pointToCheck
+    # is on the maximum value of the X or Y gridlines and the path therefore goes along the edge of the figure), as any point directly on the boundary of a
+    # path does not count as inside the path. The inflation amount is small enough to not allow any points on the meshgrid that should not be inside the path
+    # to be counted as inside it.
+    CCW = boundary.contains_point(pointToCheck, radius=min(halfDeltaX, halfDeltaY) / 2)
 
     if not CCW:
-        # The point to the left is not within the boundary so the path is going CW.
+        # The path is not counter-clockwise.
         return False, 'none'
 
-    # Get the Z value of the interior of a counterclockwise path. This is the Z value of the point on the meshgrid at pointToCheck.
+    # Get the Z value of the interior of a counter-clockwise path. This is the Z value of the point on the (X, Y) at pointToCheck.
     # Rounding is used in order to accurately compare floating point numbers.
     indexY = np.where(xCoords.round(6) == np.around(pointToCheck[0], 6))[1][0]
     indexX = np.where(yCoords.round(6) == np.around(pointToCheck[1], 6))[0][0]
