@@ -247,8 +247,8 @@ class InteractiveNNDemo:
         self.currentFigure, self.axes = discreteheatmap.main(featureOneMesh, featureTwoMesh, np.transpose(np.array(classificatons)),
                                                              currentFigure=self.currentFigure, boundary=True, boundaryColor='black', boundaryWidth=2,
                                                              fill=1, fillAlpha=0.45, dotSize=125/self.divisions, colorMapping=self.classToColorMapping,
-                                                             title=self.title, xLabel=dataset.columns[0],
-                                                             yLabel=dataset.columns[1], legend=False)
+                                                             title=self.title, xLabel=dataset.columns[0], yLabel=dataset.columns[1],
+                                                             spinesToRemove=[], legend=False)
 
         # Plot the data.
         for index, series in dataset.iterrows():
