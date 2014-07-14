@@ -360,33 +360,46 @@ def main(xCoords, yCoords, zValues, outputLocation=None, currentFigure=None, lev
 
 
 def calc_area_hierarchy(pathStarts, paths):
-    """
+    """Determine the hierarchy of a set of paths.
+
+    Determines the set of paths that are completely contained within each path. If there is a hierarchy such as A contains B which contains C, then this
+    is marked only as A containing B and B containing C (A is not marked as containing C).
+
+    :param pathStarts:  The vertices that correspond to the start of each path in paths.
+    :type pathStarts:   list of (x, y) coordinate tuples
+    :param paths:       The vertices that make up each of the paths.
+    :type paths:        dict of lists of (x, y) coordinate tuples
+    :returns :          A mapping from each path starting point to the (x, y) coordinates of the starting points of paths internal to it.
+    :type :             dict
+
     """
 
     # Create the Path objects for all the enclosed areas.
     boundaries = dict([(i, path.Path(paths[i], [path.Path.MOVETO] + ([path.Path.LINETO] * (len(paths[i]) - 1)))) for i in pathStarts])
 
-    # Determine the areas that are inside each area.
+    # Determine the paths that are inside each path.
     nested = {}
     for i in pathStarts:
         boundary = boundaries[i]
         areasContained = [j for j in pathStarts if boundary.contains_path(boundaries[j])]
         nested[i] = areasContained
 
-    # Update the paths that contain an area inside them in order to ensure no overlap of colorings. This requires going in a CW motion around the internal
-    # path in order to cut it out of the outside area.
+    # For each path that contains other paths inside it, determine which of the internal paths need to be marked as internal to it. For example, If there
+    # is a hierarchy such as A contains B which contains C, then determine that although A contains both B and C, only B needs to be marked as internal
+    # (C will be marked as internal to B).
     remove = {}
     for i in nested:
-        # Search through the areas with other areas inside them. This requires finding the fewest areas that cover all the areas contained in the current
-        # area. For example, the current area may have two disjoint areas, A and B, inside it. In turn, A has 1 area inside it and B has 2 areas inside it.
-        # The current area therefore has 5 areas inside it. The fewest areas that can be removed from the current area that covers all areas inside it is
-        # to remove A and B.
+        # Find the fewest areas that cover all areas internal to i. For example, i may have two disjoint areas, A and B, inside it. In turn, A has 1 area
+        # inside it and B has 3 areas inside it. Therefore, i has 5 areas inside it. We are looking to find the smallest number of areas inside i that can
+        # cove all internal areas. In this case it would be A and B, as together they cover all internal areas.
+
+        # First sort i's internal areas by the number of areas they have internal to them (in descending order).
         internalsSortedBySizeDecreasing = sorted(nested[i], key=lambda x : len(nested[x]), reverse=True)
-        included = set([])
-        toRemove = set([])
+        toRemove = set([])  # The minimal set of i's internal areas that can be used to cover all of i's internal areas.
+        included = set([])  # The areas internal to i that have been covered by the areas in toRemove.
         for j in internalsSortedBySizeDecreasing:
             if not j in included:
-                # If j has not been included in the set already, then it is a top level area inside the external area. Therefore, add it to toRemove.
+                # If j has not been included in the set already, then it is a top level area inside i. Therefore, add it to toRemove.
                 toRemove.add(j)
             # Indicate that j and all the areas inside it have been dealt with.
             included |= set(nested[j])
@@ -397,8 +410,29 @@ def calc_area_hierarchy(pathStarts, paths):
 
 
 def close_paths(paths, openStartingPoints, startsToEnds, xCoords, halfDeltaX, yCoords, halfDeltaY, zValues):
-    """
+    """Close open paths.
+
     All these boundaries will have both start an ending points on an edge of the figure.
+
+    :param paths:               The vertices that make up each of the paths.
+    :type paths:                dict of lists of (x, y) coordinate tuples
+    :param openStartingPoints:  The starting points of open paths.
+    :type openStartingPoints:   set of (x, y) coordinate tuples
+    :param startsToEnds:        A mapping from starting points of paths to the ending points of the paths
+    :type startsToEnds:         dict
+    :param xCoords:             The x coordinates where the Z values have been evaluated.
+    :type xCoords:              2 dimensional numpy array
+    :param halfDeltaX:          Half the distance between adjacent X coordinate values.
+    :type halfDeltaX:           float
+    :param yCoords:             The y coordinates where the Z values have been evaluated.
+    :type yCoords:              2 dimensional numpy array
+    :param halfDeltaY:          Half the distance between adjacent Y coordinate values.
+    :type halfDeltaY:           float
+    :param zValues:             The z value for each (x,y) pair.
+    :type zValues:              2 dimensional numpy array
+    :returns :                  Mapping from the starting positions to the now closed paths, the interior Z value for each closed path.
+    :type :                     dict mapping (x, y) coordinate tuple to list of tuples, dict mapping (x, y) coordinate tuple to float
+
     """
 
     # Determine boundaries of the (X,Y) grid.
@@ -409,10 +443,11 @@ def close_paths(paths, openStartingPoints, startsToEnds, xCoords, halfDeltaX, yC
     yMax = yCoords.max()
     deltaY = abs(np.ediff1d([yCoords[0,0], yCoords[1,0]]))[0]  # The distance between adjacent Y coordinate values.
 
-    newPaths = {}
-    pathStartToZValue = {}
+    # Setup the return values.
+    newPaths = {}  # Altered paths that have been closed.
+    pathStartToZValue = {}  # Mappings from the starting points of paths to the Z value of the interior of the path.
 
-    # First close paths that start and end on the same edge.
+    # First close paths that start and end on the same figure edge. These are paths that just form loops on one edge of te figure.
     closedStartPoints = set([])
     for i in openStartingPoints:
         currentPath = [j for j in paths[i]]
@@ -422,10 +457,11 @@ def close_paths(paths, openStartingPoints, startsToEnds, xCoords, halfDeltaX, yC
         endXCoord = endOfPath[0]
         endYCoord = endOfPath[1]
         if (startXCoord == endXCoord) or (startYCoord == endYCoord):
-            # The path start and ends on the same edge, so close the path
+            # The path starts and ends on the same edge.
             currentPath.append(i)
             pathIsCCW, areaZValue = test_clockwise(currentPath, xCoords, halfDeltaX, yCoords, halfDeltaY, zValues)
             if pathIsCCW:
+                # If the path is counter-clockwise, then record the path and its associated Z value.
                 pathStartToZValue[i] = areaZValue
                 newPaths[i] = currentPath
                 closedStartPoints.add(i)
@@ -436,15 +472,25 @@ def close_paths(paths, openStartingPoints, startsToEnds, xCoords, halfDeltaX, yC
         currentStartingPoint = openStartingPoints.pop()
         currentPath = [i for i in paths[currentStartingPoint]]
 
-        # Travel around the edges of the figure in a CCW motion to close the path.
+        # Travel around the edges of the figure in a CCW motion to close the path. The current movement of the figure is determined in both the X and Y
+        # directions. There are four possible general locations for the current position being examined: A) left edge, B) bottom, C) right, or D) top.
+        # The changes in the current position that should take place for each case are:
+        # A) the X value of the current position should not change and the Y should decrease.
+        # B) the X value of the current position should increase and the Y should not change.
+        # C) the X value of the current position should not change and the Y should increase.
+        # D) the X value of the current position should decrease and the Y should not change.
+        # Determine the current position and the changes in the X and Y values that are needed.
         currentPosition = currentPath[-1]
         currentXMovement = 0 if (np.allclose([currentPosition[0]], [xMax]) or np.allclose([currentPosition[0]], [xMin])) else (deltaX if np.allclose([currentPosition[1]], [yMin]) else -deltaX)
         currentYMovement = 0 if (np.allclose([currentPosition[1]], [yMax]) or np.allclose([currentPosition[1]], [yMin])) else (deltaY if np.allclose([currentPosition[0]], [xMax]) else -deltaY)
         while not np.allclose([currentPosition], [currentStartingPoint]):
+            # Loop until the starting position of the path is reached.
+
             # Update the current position being examined.
             currentPosition = (currentPosition[0] + currentXMovement, currentPosition[1] + currentYMovement)
 
             # If the current position is the start of another path, then append the paths together as they must be part of the same area boundary.
+            # As this may take the current position onto another edge of the figure, update the X and Y movements.
             otherPathStart = [i for i in openStartingPoints if np.allclose([currentPosition], [i])]
             if otherPathStart:
                 currentPosition = otherPathStart[0]
@@ -491,7 +537,7 @@ def close_paths(paths, openStartingPoints, startsToEnds, xCoords, halfDeltaX, yC
         # Close the path now that the starting point has been reached.
         currentPath.append(currentStartingPoint)
 
-        # Determine the Z value of the are enclosed by the path (this is the Z value of the point on the (X,Y) grid one half step CW from the starting point.
+        # Determine the Z value of the area enclosed by the path (this is the Z value of the point on the (X,Y) grid one half step CW from the starting point.
         if np.allclose([currentStartingPoint[0]], [xMin]):
             # Starting point is on the leftmost edge of the figure.
             pointToCheck = (currentStartingPoint[0], currentStartingPoint[1] + halfDeltaY)
