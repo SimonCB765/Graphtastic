@@ -125,7 +125,7 @@ def plot(xValues, yValues, outputLocation=None, classLabels=pandas.Series(), cur
     # Generate the plot.
     if classLabels.empty:
         # If there are no classes, then generate a basic scatterplot where all points are one color.
-        axes.scatter(xValues, yValues, s=size, c='red', marker=shape, edgecolor=edgeColor, linewidths=linewidths, alpha=alpha)
+        axes.scatter(xValues, yValues, s=size, c='black', marker=shape, edgecolor=edgeColor, linewidths=linewidths, alpha=alpha)
     else:
         # Map the class values to colors. If there are more class values than colors, then multiple lass values will be mapped to the same color.
         uniqueLabels = sorted(classLabels.unique())
