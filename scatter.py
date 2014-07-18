@@ -55,7 +55,7 @@ def plot(xValues, yValues, outputLocation=None, classLabels=pandas.Series(), cur
     :param outputLocation:      The location where the figure will be saved.
     :type outputLocation:       str (or None if saving is not desired)
     :param classLabels:         The classifications of each observations. Must be ordered in the same order as xValues and yValues.
-                                An empty Series indicates no class infrmation should be use.
+                                An empty Series indicates no class information should be use.
     :type classLabels:          a pandas object of the same size as xValues and yValues on which unique and empty can be called.
     :param currentFigure:       The figure from which the axes to plot the scatterplot on will be taken. If not provided, then a new figure will be created.
     :type currentFigure:        matplotlib.figure.Figure
