@@ -1,11 +1,12 @@
 import argparse
 import matplotlib.pyplot as plt
 import pandas
+import sys
 
 import colors
 
 
-def main(datasetLocation, outputLocation, headerPresent=False, separator='\t', classColumn=None, columnsToPlot=None, title=''):
+def main(datasetLocation, outputLocation, headerPresent=False, separator='\t', classColumn=None, columnsToPlot=[0, 1], title=''):
     """Create a scatter plot of a given dataset.
 
     :param datasetLocation:     The location of the dataset to generate a scatterplot from.
@@ -66,7 +67,7 @@ def plot(xValues, yValues, outputLocation=None, classLabels=pandas.Series(), cur
     :param yLabel:              The label for the y axis.
     :type yLabel:               str
     :param size:                The size of the points in the scatterplot.
-    :type size:                 int
+    :type size:                 float
     :param shape:               The shape of the points in the scatterplot.
     :type shape:                any valid shape accepted by matplotlib.pyplot.scatter
     :param edgeColor:           The color of the line edges around the points.
@@ -102,7 +103,7 @@ def plot(xValues, yValues, outputLocation=None, classLabels=pandas.Series(), cur
     for i in spinesToRemove:
         axes.spines[i].set_visible(False)
 
-    # Change remaining spines' widths and color.
+    # Change remaining spines' widths and colors.
     for i in set(['left', 'right', 'top', 'bottom']) - set(spinesToRemove):
         axes.spines[i].set_linewidth(0.75)
         axes.spines[i].set_color('0.25')
@@ -127,7 +128,7 @@ def plot(xValues, yValues, outputLocation=None, classLabels=pandas.Series(), cur
         # If there are no classes, then generate a basic scatterplot where all points are one color.
         axes.scatter(xValues, yValues, s=size, c='black', marker=shape, edgecolor=edgeColor, linewidths=linewidths, alpha=alpha)
     else:
-        # Map the class values to colors. If there are more class values than colors, then multiple lass values will be mapped to the same color.
+        # Map the class values to colors. If there are more class values than colors in the color set, then multiple class values will be mapped to the same color.
         uniqueLabels = sorted(classLabels.unique())
         if not colorMapping:
             colorsToUse = colors.colorMaps[faceColorSet]
@@ -138,6 +139,7 @@ def plot(xValues, yValues, outputLocation=None, classLabels=pandas.Series(), cur
 
         for i, j in enumerate(uniqueLabels):
             axes.scatter(xValues[classLabels == j], yValues[classLabels == j], s=size, c=colorMapping[j], label=str(j), marker=shape, edgecolor=edgeColor, linewidths=linewidths, alpha=alpha)
+
         # Add a legend.
         if legend:
             legend = axes.legend(bbox_to_anchor=(1.05, 0.5), loc=6, borderaxespad=0, frameon=True, scatterpoints=1)
@@ -155,20 +157,31 @@ def plot(xValues, yValues, outputLocation=None, classLabels=pandas.Series(), cur
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description=('Generate a scatterplot from a file of a dataset.'))
+    parser = argparse.ArgumentParser(description=('Generate a scatterplot from a file of a dataset.'),
+                                     epilog=('The dataset should be saved as an n x p matrix, where there are n rows of observations and p columns ' +
+                                            'of variables.'))
     parser.add_argument('dataset', help='The location of the dataset file.')
     parser.add_argument('output', help='The location where the image of the plot will be saved.')
-    parser.add_argument('-r', '--header', help='Whether a header is present in dataset file. (Default value: No header).',
+    parser.add_argument('-r', '--header', help='Whether a header is present in the dataset file. (Default value: No header).',
                         action='store_true', default=False, required=False)
     parser.add_argument('-s', '--sep', help='The separator used by the dataset file. (Required type: %(type)s, default value: %(default)s).',
                         type=str, default='\t', required=False)
-    parser.add_argument('-d', '--classCol', help='The index of the column in which the values of the class variable can be found. Only use if different classes should be highlighted on the plot. (Required type: %(type)s, default value: no classes used).',
+    parser.add_argument('-d', '--classCol', help='The index of the column in which the values of the class variable can be found (negative indexing permitted). Only use if different classes should be highlighted on the plot. (Required type: %(type)s, default value: no classes used).',
                         type=int, default=None, required=False)
-    parser.add_argument('-c', '--cols', help='The indices of the columns that should be plotted against each other. (Required type: two ints separated by a comma, default value: first two columns).',
+    parser.add_argument('-c', '--cols', help='The indices of the two columns that should be plotted against each other. (Required type: two ints separated by a comma, default value: first two columns).',
                         type=str, default='0,1', required=False)
     parser.add_argument('-t', '--title', help='The title for the plot. (Required type: %(type)s, default value: %(default)s).',
                         type=str, default='', required=False)
     args = parser.parse_args()
 
-    columnsToPlot = None if len(args.cols.split(',')) != 2 else [int(i) for i in args.cols.split(',')]
+    columns = args.cols.split(',')
+    if len(columns) != 2:
+        print('ERROR: An incorrect number ({0}) of columns were specified using the -c or --cols flags. Please specify only two columns'.format(len(columns)))
+        sys.exit()
+    try:
+        columnsToPlot = [int(i) for i in columns]
+    except ValueError:
+        print('ERROR: Non-integer column index provided. Only integer column indices may be supplied using the -c or --cols flags.')
+        sys.exit()
+
     main(args.dataset, args.output, headerPresent=args.header, separator=args.sep, classColumn=args.classCol, columnsToPlot=columnsToPlot, title=args.title)

@@ -77,7 +77,7 @@ def main(xCoords, yCoords, zValues, outputLocation=None, currentFigure=None, lev
     for i in spinesToRemove:
         axes.spines[i].set_visible(False)
 
-    # Change remaining spines' widths and color.
+    # Change remaining spines' widths and colors.
     for i in set(['left', 'right', 'top', 'bottom']) - set(spinesToRemove):
         axes.spines[i].set_linewidth(0.75)
         axes.spines[i].set_color('0.25')
