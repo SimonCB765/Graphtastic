@@ -6,7 +6,7 @@ def main(generatingDistributions, outputLocation, numberOfObservations=None, hea
     """Generate a random dataset of a specified number of classes.
 
     Each feature in the dataset is described by a Gaussian with specified mean and variance of 1.
-	The data for each class is generated from a multivariate Gaussian distribution (with covariance matrix = I) defined in this manner.
+    The data for each class is generated from a multivariate Gaussian distribution (with covariance matrix = I) defined in this manner.
 
     :param generatingDistributions:     The mean vectors of the distributions to generate the data from. Each element of the outer list specifies
                                         the mean vector for one class for which data should be generated.
@@ -50,10 +50,12 @@ def main(generatingDistributions, outputLocation, numberOfObservations=None, hea
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=('Generates a random dataset containg a specified number of classes. ' +
                                                   'Each feature in the dataset is described by a Gaussian with specified mean and variance of 1. ' +
-												  'The data for each class is generated from a multivariate Gaussian distribution (with covariance ' +
-												  'matrix = I) defined in this manner.')
-									)
-    parser.add_argument('means', help='The mean vectors of the generating distributions. Each mean vector must contai the same number of components.')
+                                                  'The data for each class is generated from a multivariate Gaussian distribution (with covariance ' +
+                                                  'matrix = I) defined in this manner.\n' +
+                                                  'The list of mean vectors and list of the number of observations to generate must contain no spaces.' +
+                                                  'For example, [[-1,-1],[1,1]] is an acceptable list of mean vectors, but [[-1, -1], [1, 1]] is not.')
+                                    )
+    parser.add_argument('means', help='The mean vectors of the generating distributions. Each mean vector must contai the same number of components. (Required type: list of lists of floats).')
     parser.add_argument('dataLocation', help='The location where the dataset will be written out.')
     parser.add_argument('-n', '--numObs', help='The number of observations to generate for each class. (Required type: list of integers).',
                         default=None, required=False)
