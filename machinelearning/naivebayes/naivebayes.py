@@ -24,7 +24,7 @@ class NaiveBayes:
         self.classes = [i for i in self.groupedByClasses.grouper.groups]
         self.features = self.dataset.columns[:-1]
 
-        # Compute the class priors.
+        # Maximum likelihood computation of class priors.
         self.classPriors = (self.groupedByClasses.size()) / self.numberOfObservations
 
     def predict(self, dataset, likelihoodDistribution='Gaussian'):
@@ -35,8 +35,26 @@ class NaiveBayes:
 
         if likelihoodDistribution == 'Gaussian':
             self.parameters = self.groupedByClasses.aggregate([np.mean, np.var])[self.features]
-            print(self.parameters)
-            print(self.classes)
-            print(self.features)
+            classMeanVectors = {}
+            classVarianceVectors = {}
+            # Determine class mean and variance vectors for the observations in the class.
             for i in self.classes:
-                print('\n',i,'\n',self.parameters.xs(i))
+                classParameters = self.parameters.xs(i)
+                classMeanVector = classParameters.xs('mean', level=1)
+                classMeanVectors[i] = classMeanVector
+                classVarianceVector = classParameters.xs('var', level=1)
+                classVarianceVectors[i] = classVarianceVector
+
+            for index, series in list(dataset.iterrows()):
+                classPosteriors = []
+                for j in self.classes:
+                    classPrior = self.classPriors.xs(j)
+                    classMean = classMeanVectors[j]
+                    classVariance = classVarianceVectors[j]
+                    classLikelihood = (1 / np.sqrt(2 * np.pi * classVariance)) * np.exp(- np.square(series - classMean) / (2 * classVariance))
+                    posterior = classPrior * classLikelihood.prod()
+                    classPosteriors.append(posterior)
+                mostLikelyClass = sorted([i for i in zip(classPosteriors, self.classes)], reverse=True)[0][1]
+                predictedClasses.append(mostLikelyClass)
+
+        return predictedClasses
