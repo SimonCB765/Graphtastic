@@ -12,6 +12,17 @@ class NearestNeighbours:
     """
 
     def __init__(self, dataset='', headerPresent=False, separator='\t'):
+        """Initialise a nearest neighbours classifier.
+
+        :param dataset:         The location of the dataset used to train the classifier. The class values are assumed to be in the final column.
+        :type dataset:          str
+        :param headerPresent:   Whether a single line header is present in the dataset file.
+        :type headerPresent:    boolean
+        :param separator:       The string that separates values in the file containing dataset.
+        :type separator:        str
+
+        """
+
         if type(dataset) == str:
             if os.path.isfile(dataset):
                 self.dataset = pandas.read_csv(dataset, sep=separator, header=(0 if headerPresent else None))
