@@ -1,0 +1,114 @@
+from collections import deque
+import matplotlib.patches as patches
+from matplotlib.path import Path
+import matplotlib.pyplot as plt
+import numpy as np
+
+class AnimatedRings:
+    """Class to generate animated concentric rings."""
+
+    def __init__(self, xCoord, yCoord, totalRadius=10, numberOfRings=10, numberOfTimeSteps=25, colorsToUse=['black'], fade=False, fadeStart=1.0, fadeEnd=0.1):
+        """Initialises the rings.
+
+        :param xCoord:              The X coordinate at which the set of rings will be centered.
+        :type xCoord:               float
+        :param yCoord:              The Y coordinate at which the set of rings will be centered.
+        :type yCoord:               float
+        :param totalRadius:         The radius of the outermost ring form the center of the set of rings.
+        :type totalRadius:          float
+        :param numberOfRings:       The number of rings to create.
+        :type numberOfRings:        int
+        :param numberOfTimeSteps:   The number of time steps after which the rings will contain no color (and therefore will disappear).
+        :type numberOfTimeSteps:    int
+        :param colorsToUse:         The colors to use in coloring the rings. The set of colors chosen will be cycled through, so that if the colors
+                                    are ['red', 'green', 'blue'], ring 0 will be blue, ring 1 red, ring 2 green, ring 3 blue, etc. If you want a gap
+                                    between colors then use 'none' as a color (e.g. alternating black and clear rings would be ['black', 'none']).
+                                    The animation can also be made to appear slower by altering the colors used. For example, ['red', 'red', 'black', 'black']
+                                    will appear to animate at half the speed of the ['red', 'black'].
+        :type colorsToUse:          list of valid colors for matplotlib.patches objects
+        :param fade:                Whether the rings should have different transparencies as you move away from the center.
+        :type fade:                 boolean
+        :param fadeStart:           The alpha value for the innermost ring.
+        :type fadeStart:            float
+        :param fadeEnd:             The alpha value for the outermost ring.
+        :type fadeEnd:              float
+
+        """
+
+        self.xCoord = xCoord
+        self.yCoord = yCoord
+        self.totalRadius = totalRadius
+        self.numberOfRings = numberOfRings
+        self.ringWidth = totalRadius / numberOfRings
+        self.numberOfTimeSteps = numberOfTimeSteps
+        self.colorsToUse = colorsToUse
+        self.fade = fade
+        self.fadeStart = fadeStart
+        self.fadeEnd = fadeEnd
+
+        # Set up variables for controlling the color of the next inner ring generated.
+        self.currentColorIndex = 0  # The index of the color to make the next inner ring
+        self.currentColor = self.colorsToUse[self.currentColorIndex]  # The color to make the next inner ring.
+
+        # Determine when to stop generating new colored rings from the centre. As the rings propagate out from the center of the set of rings, this time
+        # step must be calculated such that the last colored ring disappears past the final ring after numberOfTimeSteps time steps. For example, if
+        # numberOfTimeSteps == 40, then the the 39th update must make it so that only the outermost ring of the collection is colored, and the 40th update
+        # will cause all rings to be clear (and therefore to disappear).
+        self.stopGenerating = self.numberOfTimeSteps - self.numberOfRings  # Once this number is reached no new colors will be generated from the center.
+
+        # Setup the alpha value for each ring, and the queue used to keep track of each ring's current color
+        self.colors = deque(['none'] * self.numberOfRings)
+        if fade:
+            fadeStep = (fadeEnd - fadeStart) / self.numberOfRings
+            self.fadeValues = [(fadeStart + (fadeStep * i)) for i in range(self.numberOfRings)]
+        else:
+            self.fadeValues = [1] * self.numberOfRings
+
+        # Create the rings by first generating a set of concentric circles ordered so that the one with the largest radius is at index 0.
+        circles = [patches.Circle((self.xCoord, self.yCoord), radius=(self.ringWidth * i)) for i in range(1, self.numberOfRings + 1)[::-1]]
+
+        # Create the individual rings. For each ring this is done by taking the path of the circle at index i - 1, reversing it, and then
+        # appending it to the path of the (larger) circle at index i. This ensures that the patch generated from this path will only be the
+        # portion of the circle at index i that is not overlapped by the circle at index i - 1.
+        circlePaths = [i.get_transform().transform_path(i.get_path()) for i in circles]
+        circleVertsCW = [i.vertices[:-1] for i in circlePaths]  # Remove close poly vertex at the end of each list of vertices.
+        circleVertsCCW = [i.vertices[:-1][::-1] for i in circlePaths]  # Remove close poly vertex and reverse vertices.
+        circleCodes = [i.codes[:-1] for i in circlePaths]  # Remove close poly code at the end of each list of codes.
+        ringVerts = [np.concatenate((circleVertsCW[i], circleVertsCCW[i + 1])) for i in range(self.numberOfRings - 1)] + [circleVertsCW[-1]]
+        ringCodes = [np.concatenate((circleCodes[i], circleCodes[i + 1])) for i in range(self.numberOfRings - 1)] + [circleCodes[-1]]
+
+        # Make the ring paths into patches.
+        ringPaths = [Path(ringVerts[i], ringCodes[i]) for i in range(self.numberOfRings)]
+        ringPaths = ringPaths[::-1]  # Reverse the ring paths so that the smaller inner rings are at the start of the list.
+        self.ringPatches = [patches.PathPatch(j, alpha=self.fadeValues[i], facecolor=self.colors[i], edgecolor=self.colors[i], linewidth=1) for i,j in enumerate(ringPaths)]
+
+    def init(self):
+        """Init function needed for animation."""
+        return self.ringPatches
+
+    def update(self, frameNumber):
+        """Called when the rings need updating.
+
+        :param frameNumber:     The number of the current frame.
+        :type frameNumber:      int
+
+        """
+
+        if frameNumber > self.numberOfTimeSteps:
+            # If the animation should have ended.
+            return None
+        elif frameNumber >= self.stopGenerating:
+            # Turn off the color.
+            self.currentColor = 'none'
+        else:
+            # Choose the next color.
+            self.currentColor = self.colorsToUse[self.currentColorIndex]
+            self.currentColorIndex = (self.currentColorIndex + 1) % len(self.colorsToUse)
+
+        # Update the colors.
+        oldOuterColor = self.colors.pop()
+        self.colors.appendleft(self.currentColor)
+        for i,j in enumerate(self.ringPatches):
+            j.set_color(self.colors[i])
+
+        return self.ringPatches
