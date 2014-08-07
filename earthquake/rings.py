@@ -7,7 +7,8 @@ import numpy as np
 class AnimatedRings:
     """Class to generate animated concentric rings."""
 
-    def __init__(self, xCoord, yCoord, totalRadius=10, numberOfRings=10, numberOfTimeSteps=25, colorsToUse=['black'], fade=False, fadeStart=1.0, fadeEnd=0.1):
+    def __init__(self, xCoord, yCoord, totalRadius=10, numberOfRings=10, numberOfTimeSteps=25, colorsToUse=['black'], fade=False, fadeStart=1.0, fadeEnd=0.1,
+                 updateSpeed=1):
         """Initialises the rings.
 
         :param xCoord:              The X coordinate at which the set of rings will be centered.
@@ -24,7 +25,7 @@ class AnimatedRings:
                                     are ['red', 'green', 'blue'], ring 0 will be blue, ring 1 red, ring 2 green, ring 3 blue, etc. If you want a gap
                                     between colors then use 'none' as a color (e.g. alternating black and clear rings would be ['black', 'none']).
                                     The animation can also be made to appear slower by altering the colors used. For example, ['red', 'red', 'black', 'black']
-                                    will appear to animate at half the speed of the ['red', 'black'].
+                                    will appear to animate at half the speed of the ['red', 'black'] (you would also need to double the number of rings).
         :type colorsToUse:          list of valid colors for matplotlib.patches objects
         :param fade:                Whether the rings should have different transparencies as you move away from the center.
         :type fade:                 boolean
@@ -32,6 +33,9 @@ class AnimatedRings:
         :type fadeStart:            float
         :param fadeEnd:             The alpha value for the outermost ring.
         :type fadeEnd:              float
+        :param updateSpeed:         Controls the speed of ring updating. E.g. if updateSpeed == 1 the rings will update every frame, if updateSpeed == 2
+                                    the rings will update every other frame.
+        :type updateSpeed:          int
 
         """
 
@@ -45,6 +49,7 @@ class AnimatedRings:
         self.fade = fade
         self.fadeStart = fadeStart
         self.fadeEnd = fadeEnd
+        self.updateSpeed = updateSpeed
 
         # Set up variables for controlling the color of the next inner ring generated.
         self.currentColorIndex = 0  # The index of the color to make the next inner ring
@@ -54,7 +59,7 @@ class AnimatedRings:
         # step must be calculated such that the last colored ring disappears past the final ring after numberOfTimeSteps time steps. For example, if
         # numberOfTimeSteps == 40, then the the 39th update must make it so that only the outermost ring of the collection is colored, and the 40th update
         # will cause all rings to be clear (and therefore to disappear).
-        self.stopGenerating = self.numberOfTimeSteps - self.numberOfRings  # Once this number is reached no new colors will be generated from the center.
+        self.stopGenerating = self.numberOfTimeSteps - (self.numberOfRings * self.updateSpeed)  # Once this number is reached no new colors will be generated from the center.
 
         # Setup the alpha value for each ring, and the queue used to keep track of each ring's current color
         self.colors = deque(['none'] * self.numberOfRings)
@@ -80,11 +85,13 @@ class AnimatedRings:
         # Make the ring paths into patches.
         ringPaths = [Path(ringVerts[i], ringCodes[i]) for i in range(self.numberOfRings)]
         ringPaths = ringPaths[::-1]  # Reverse the ring paths so that the smaller inner rings are at the start of the list.
-        self.ringPatches = [patches.PathPatch(j, alpha=self.fadeValues[i], facecolor=self.colors[i], edgecolor=self.colors[i], linewidth=1) for i,j in enumerate(ringPaths)]
+        self.ringPatches = [patches.PathPatch(j, alpha=self.fadeValues[i], facecolor=self.colors[i], edgecolor=self.colors[i], linewidth=0) for i,j in enumerate(ringPaths)]
 
-    def init(self):
-        """Init function needed for animation."""
+
+    def get_rings(self):
+        """Return the rings."""
         return self.ringPatches
+
 
     def update(self, frameNumber):
         """Called when the rings need updating.
@@ -94,21 +101,104 @@ class AnimatedRings:
 
         """
 
-        if frameNumber > self.numberOfTimeSteps:
-            # If the animation should have ended.
-            return None
-        elif frameNumber >= self.stopGenerating:
-            # Turn off the color.
-            self.currentColor = 'none'
+        if (frameNumber >= self.numberOfTimeSteps) or (frameNumber % self.updateSpeed):
+            # If no change should be made to the rings because they should stop animating or this is a frame when they should not update.
+            return []
         else:
-            # Choose the next color.
-            self.currentColor = self.colorsToUse[self.currentColorIndex]
-            self.currentColorIndex = (self.currentColorIndex + 1) % len(self.colorsToUse)
+            if frameNumber >= self.stopGenerating:
+                # Turn off the color.
+                self.currentColor = 'none'
+            else:
+                # Choose the next color.
+                self.currentColor = self.colorsToUse[self.currentColorIndex]
+                self.currentColorIndex = (self.currentColorIndex + 1) % len(self.colorsToUse)
 
-        # Update the colors.
-        oldOuterColor = self.colors.pop()
-        self.colors.appendleft(self.currentColor)
-        for i,j in enumerate(self.ringPatches):
-            j.set_color(self.colors[i])
+            # Update the colors.
+            oldOuterColor = self.colors.pop()
+            self.colors.appendleft(self.currentColor)
+            for i,j in enumerate(self.ringPatches):
+                j.set_color(self.colors[i])
 
         return self.ringPatches
+
+
+class RingCollection:
+    """Class to generate a collection of animated rings."""
+
+    def __init__(self, parameters):
+        """Initialise the collection.
+
+        Each row of the parameters DataFrame contains the parameters needed to create one AnimatedRings object, along with the information to
+        determine when the object should be created and deleted. The DataFrame must contain the following columns (see AnimatedRings or more
+        detail on the individual columns):
+            Start               The time step at which the AnimatedRings object should be initialised.
+                                int
+            XCoord              The X coordinate at which the AnimatedRings object should be displayed.
+                                float
+            YCoord              The Y coordinate at which the AnimatedRings object should be displayed.
+                                float
+            Radius              The radius from the center of the outermost ring.
+                                float
+            NumberOfRings       The number of rings to create.
+                                int
+            NumberOfTimeSteps   The number of time steps over which the AnimatedRings object should be active.
+                                int
+            ColorsToUse         The colors for the rings.
+                                comma delimited string
+            Fade                Whether the AnimatedRings object should change in transparency.
+                                boolean
+            FadeStart           The alpha value for the innermost ring.
+                                float
+            FadeEnd             The alpha value for the outermost ring.
+                                float
+            UpdateSpeed         The speed with which the rings will update.
+                                int
+        One final column, 'Stop', will be added to the DataFrame. Any other columns will be ignored.
+
+        :param parameters:  The parameters used to create the ring sets in the collection.
+        :type parameters:   pandas.DataFrame
+
+        """
+
+        self.parameters = parameters
+        self.parameters['Stop'] = self.parameters['Start'] + self.parameters['NumberOfTimeSteps']
+        self.ringsAlive = set([])  # Record of the rings currently up for animation.
+
+        # Ideally rings would only be created when their turn to be animated came up. However, the matplotlib animation API requires that an animated object
+        # be created and attached to the figure prior to the start of the animation. All rings must therefore be created at initialisation.
+        self.allRings = {}
+        for index, row in self.parameters.iterrows():
+            createdRingSet = AnimatedRings(row['XCoord'], row['YCoord'], row['Radius'], row['NumberOfRings'], row['NumberOfTimeSteps'],
+                                           row['ColorsToUse'].split(','), row['Fade'], row['FadeStart'], row['FadeEnd'], row['UpdateSpeed'])
+            self.allRings[index] = createdRingSet
+
+
+    def get_rings(self):
+        """Return the rings in the collection."""
+        return [j for i in self.allRings for j in self.allRings[i].get_rings()]
+
+
+    def update(self, frameNumber):
+        """Called when the rings need updating.
+
+        :param frameNumber:     The number of the current frame.
+        :type frameNumber:      int
+
+        """
+
+        # Delete rings that should end.
+        oldRings = self.parameters[self.parameters['Stop'] == frameNumber]
+        for index, row in oldRings.iterrows():
+            del self.allRings[index]
+            self.ringsAlive -= set([index])
+
+        # Find all new rings to create.
+        newRings = self.parameters[self.parameters['Start'] == frameNumber]
+        for index, row in newRings.iterrows():
+            self.ringsAlive |= set([index])
+
+        updatedRings = []
+        for i in self.ringsAlive:
+            updatedRings.extend(self.allRings[i].update(frameNumber - self.parameters.iloc[i]['Start']))
+
+        return updatedRings
