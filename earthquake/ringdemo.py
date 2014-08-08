@@ -5,7 +5,7 @@ import pandas
 import rings
 
 # Setup the path to ffmpeg.
-plt.rcParams['animation.ffmpeg_path'] = '/path/to/ffmpeg'
+plt.rcParams['animation.ffmpeg_path'] = '/path/to/ffmpeg/executable'
 
 # Setup the figure to be a blank white background.
 fig = plt.figure(None)

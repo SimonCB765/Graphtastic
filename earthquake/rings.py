@@ -179,7 +179,7 @@ class FadeOutRings:
             fadeStep = (fadeEnd - fadeStart) / self.numberOfRings
             self.fadeValues = [(fadeStart + (fadeStep * i)) for i in range(self.numberOfRings)]
         else:
-            self.fadeValues = [1] * self.numberOfRings
+            self.fadeValues = [1.0] * self.numberOfRings
         fadeOutTimeSteps = self.numberOfTimeSteps - self.stopGenerating
         self.fadeDecreaseValues = [i / fadeOutTimeSteps for i in self.fadeValues]
 
@@ -215,8 +215,11 @@ class FadeOutRings:
 
         """
 
-        if (frameNumber >= self.numberOfTimeSteps) or (frameNumber % self.updateSpeed):
-            # If no change should be made to the rings because they should stop animating or this is a frame when they should not update.
+        if (frameNumber >= self.numberOfTimeSteps):
+            for i in self.ringPatches:
+                i.set_alpha(0)
+        elif (frameNumber % self.updateSpeed):
+            # If no change should be made to the rings because this is a frame when they should not update.
             return []
         elif frameNumber >= self.stopGenerating:
             # Fade the color out.
@@ -316,7 +319,7 @@ class RingCollection:
         """
 
         # Delete rings that should end.
-        oldRings = self.parameters[self.parameters['Stop'] == frameNumber]
+        oldRings = self.parameters[self.parameters['Stop'] == frameNumber - 1]
         for index, row in oldRings.iterrows():
             del self.allRings[index]
             self.ringsAlive -= set([index])
