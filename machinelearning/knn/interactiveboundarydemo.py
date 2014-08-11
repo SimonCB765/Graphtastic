@@ -1,3 +1,7 @@
+# This demo has been designed to run with a maxmised window. The maximisation will be done automatically if
+# the Qt4Agg backend is being used. For other backends, appropriate changes may be needed, or it can be
+# maximised manually.
+
 import argparse
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
